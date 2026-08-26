@@ -50,9 +50,10 @@ class DeviceCredentialStore(context: Context) {
 private data class PairingSession(val token: String, val code: String, val qrPayload: String)
 
 private class PairingHttpApi(private val endpoint: String) {
-    fun create(internalIdHash: String, credentialHash: String): PairingSession {
+    fun create(internalId: String, friendlyCode: String, credentialHash: String): PairingSession {
         val json = post(JSONObject().put("action", "create")
-            .put("internal_id_hash", internalIdHash).put("credential_hash", credentialHash))
+            .put("internal_id", internalId).put("friendly_code", friendlyCode)
+            .put("credential_hash", credentialHash))
         return PairingSession(json.getString("pairing_token"), json.getString("pairing_code"), json.getString("qr_payload"))
     }
 
@@ -91,7 +92,8 @@ class PairingCoordinator(
     private val executor = Executors.newSingleThreadScheduledExecutor { runnable ->
         Thread(runnable, "loopin-pairing").apply { isDaemon = true }
     }
-    private val internalIdHash = sha256(identity.internalId)
+    private val internalId = identity.internalId
+    private val friendlyCode = identity.friendlyCode
     private val credentialHash = sha256(credentialStore.loadOrCreateSecret())
     @Volatile private var closed = false
     private var task: ScheduledFuture<*>? = null
@@ -109,7 +111,7 @@ class PairingCoordinator(
         if (closed) return
         onDisplay(PairingDisplayState(waitingForNetwork = true))
         try {
-            current = api.create(internalIdHash, credentialHash)
+            current = api.create(internalId, friendlyCode, credentialHash)
             window = current?.let {
                 PairingWindow(it.token, it.code, it.qrPayload, android.os.SystemClock.elapsedRealtime() + WINDOW_MS)
             }

@@ -1,0 +1,6 @@
+project_id = "loopin-player-2"
+
+[functions.device-pairing]
+verify_jwt = false
+entrypoint = "./functions/device-pairing/index.ts"
+

@@ -1033,6 +1033,15 @@ Quando houver divergência:
 
 O estado atual é uma base local sólida e demonstrável, mas ainda não é um produto conectado ao backend nem certificado no hardware MXQ.
 
+### Backend isolado do Player 2.0
+
+- Projeto Supabase exclusivo: `zdhsfirabkmivuzwyids` (`Loopin Player 2.0`).
+- Endpoint de pareamento: `https://zdhsfirabkmivuzwyids.supabase.co/functions/v1/device-pairing`.
+- Migration transacional e Edge Function vivem em `supabase/` neste mesmo repositório.
+- O Admin e o Player antigos usam infraestrutura separada e não podem ser alterados ou redirecionados para este projeto.
+- As migrations e a função foram implantadas em 26/08/2026; `create → status` foi validado remotamente, `confirm` anônimo foi rejeitado com HTTP 401 e o Security Advisor terminou sem achados.
+- A confirmação autenticada completa permanece dependente de um futuro cliente Admin e usuário autenticado no projeto novo.
+
 ## 30. Publicação automática no GitHub
 
 - Após cada modificação concluída e validada no Loopin Player 2.0, criar um commit e enviar a alteração para `origin/main` no repositório `Gado77/loopin-player-android-2`.
