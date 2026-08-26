@@ -1032,3 +1032,10 @@ Quando houver divergência:
 5. requisitos explícitos novos do usuário prevalecem, desde que não autorizem implicitamente alteração de produção ou ação destrutiva.
 
 O estado atual é uma base local sólida e demonstrável, mas ainda não é um produto conectado ao backend nem certificado no hardware MXQ.
+
+## 30. Publicação automática no GitHub
+
+- Após cada modificação concluída e validada no Loopin Player 2.0, criar um commit e enviar a alteração para `origin/main` no repositório `Gado77/loopin-player-android-2`.
+- Não deixar alterações finalizadas somente no ambiente local.
+- Não publicar quando o usuário pedir explicitamente para não enviar, quando a validação necessária falhar ou quando houver risco de incluir segredos ou artefatos indevidos. Nesses casos, informar claramente o bloqueio.
+- O Loopin Admin permanece em repositório separado e só deve ser alterado ou publicado quando isso estiver explicitamente dentro do escopo autorizado.
