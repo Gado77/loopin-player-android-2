@@ -1,0 +1,18 @@
+<resources>
+    <string name="app_name">Loopin Player 2.0</string>
+    <string name="status_starting">Inicializando localmente…</string>
+    <string name="status_ready_offline">Pronto • offline</string>
+    <string name="status_ready_online">Pronto • online</string>
+    <string name="status_degraded">Operação degradada</string>
+    <string name="status_stopped">Parado</string>
+    <string name="debug_playback_status">%1$s • %2$s • loop %3$d</string>
+    <string name="debug_no_item">none</string>
+    <string name="awaiting_configuration">Aguardando configuração…</string>
+    <string name="content_unavailable">Conteúdo temporariamente indisponível\nCódigo da tela: %1$s</string>
+    <string name="weather_forecast_title">PRÓXIMOS DIAS</string>
+    <string name="weather_legacy_title">PREVISÃO DO TEMPO</string>
+    <string name="weather_temperature_range">Máx %1$d°  •  Mín %2$d°</string>
+    <string name="weather_feels_like">Sensação %1$d°</string>
+    <string name="weather_forecast_temperature">%1$d°/%2$d°</string>
+    <string name="diagnostics_template">Loopin Player 2.0\n\nCódigo:\n%1$s\n\nVersão:\n%2$s\n\nStatus:\n%3$s\n\nSincronização:\n%4$s\n\nÚltima sincronização:\n%5$s\n\nCache:\n%6$s\n\nArmazenamento:\n%7$s livre / %8$s total\n\nEstado do Player:\n%9$s\n\nPareamento:\n%10$s\n\nUpdate atual / disponível / canal:\n%11$s / %12$s / %13$s\n\nÚltimo erro:\n%14$s</string>
+</resources>
