@@ -1019,7 +1019,8 @@ Ao concluir:
 - `docs/PHASE7_5_WEATHER_COMPOSITION_REFINEMENT.md`: painel WEATHER único, remoção da cápsula térmica e relógio compacto.
 - `docs/PHASE7_6_WEATHER_FOCUS_REFINEMENT.md`: temperatura numericamente centralizada, grau independente e remoção da previsão visual.
 - `docs/PHASE8_BACKEND_READINESS_AUDIT.md`: auditoria dos contratos reais do Admin, lacunas de segurança e bloqueios para integração operacional.
-- `docs/PHASE8_1_SECURE_PAIRING.md`: contrato e implementação do pareamento rotativo por código/QR, ainda pendente de deploy controlado.
+- `docs/PHASE8_1_SECURE_PAIRING.md`: contrato e implementação implantada do pareamento rotativo por código/QR.
+- `docs/PHASE8_2_MINIMAL_ADMIN_PAIRING.md`: Admin 2.0 mínimo, autenticação, telas e validação real do pareamento no LDPlayer.
 
 ## 29. Fonte de verdade
 
@@ -1040,7 +1041,11 @@ O estado atual é uma base local sólida e demonstrável, mas ainda não é um p
 - Migration transacional e Edge Function vivem em `supabase/` neste mesmo repositório.
 - O Admin e o Player antigos usam infraestrutura separada e não podem ser alterados ou redirecionados para este projeto.
 - As migrations e a função foram implantadas em 26/08/2026; `create → status` foi validado remotamente, `confirm` anônimo foi rejeitado com HTTP 401 e o Security Advisor terminou sem achados.
-- A confirmação autenticada completa permanece dependente de um futuro cliente Admin e usuário autenticado no projeto novo.
+- O Admin 2.0 mínimo vive em `admin2/` e implementa Auth, telas e confirmação por código/QR sem compartilhar código com o Admin antigo.
+- Em 26/08/2026, o vínculo real por código foi aprovado no LDPlayer e permaneceu `PAIRED` após force-stop, reboot e inicialização offline.
+- Código inválido, anônimo, tela de outro usuário, replay, já pareado e expirado foram rejeitados com os status esperados.
+- Confirmação remota por token QR foi aprovada; a captura óptica pela câmera permanece pendente por ausência de câmera apontável para o QR do próprio emulador.
+- Usuários, telas e dispositivos de laboratório foram removidos após a validação; não manter credenciais E2E conhecidas no projeto.
 
 ## 30. Publicação automática no GitHub
 

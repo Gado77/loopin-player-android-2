@@ -144,7 +144,7 @@ async function startPairing(req: Request, body: Record<string, unknown>): Promis
         state: "UNPAIRED",
         pairing_token: token,
         pairing_code: code,
-        qr_payload: `loopin://pair?token=${encodeURIComponent(token)}`,
+        qr_payload: `loopin://pair?v=1&type=loopin-device-pairing&token=${encodeURIComponent(token)}`,
         expires_at: expiresAt,
         expires_in: 30,
       });
@@ -220,10 +220,16 @@ async function confirmPairing(req: Request, body: Record<string, unknown>): Prom
     p_screen_name: screenName,
   });
   if (confirmationError) {
-    const unavailable = /expired|consumed|already paired|unavailable/i.test(confirmationError.message);
-    return json(unavailable ? 409 : 500, {
-      error: unavailable ? "pairing_not_available" : "pairing_failed",
-    });
+    if (/screen unavailable/i.test(confirmationError.message)) {
+      return json(403, { error: "forbidden_screen" });
+    }
+    if (/device already paired/i.test(confirmationError.message)) {
+      return json(409, { error: "device_already_paired" });
+    }
+    if (/expired|consumed/i.test(confirmationError.message)) {
+      return json(409, { error: "pairing_expired_or_consumed" });
+    }
+    return json(500, { error: "pairing_failed" });
   }
   return json(200, { state: "PAIRED", ...data });
 }

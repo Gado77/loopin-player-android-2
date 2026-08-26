@@ -8,3 +8,8 @@ local.properties
 captures/
 diagnostics/
 supabase/.temp/
+admin2/node_modules/
+admin2/dist/
+admin2/.env.local
+admin2/coverage/
+admin2/*.tsbuildinfo

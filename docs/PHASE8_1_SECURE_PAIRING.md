@@ -19,7 +19,7 @@ Código e QR nunca viram identidade permanente nem senha do dispositivo.
 
 1. Player UNPAIRED cria segredo local, envia o UUID interno persistente, o código amigável separado e somente o hash SHA-256 da credencial.
 2. Backend cria token opaco, código único na janela e expiração de 30 segundos.
-3. Player mostra código e QR `loopin://pair?token=...` simultaneamente.
+3. Player mostra código e QR versionado `loopin://pair?v=1&type=loopin-device-pairing&token=...` simultaneamente.
 4. Enquanto UNPAIRED, Player consulta somente o status da sessão temporária.
 5. Admin autenticado lê QR ou recebe o código e pede confirmação do nome da tela.
 6. RPC com `FOR UPDATE` valida expiração/consumo, cria ou seleciona `screen`, grava a credencial e vincula o `device` atomicamente.
