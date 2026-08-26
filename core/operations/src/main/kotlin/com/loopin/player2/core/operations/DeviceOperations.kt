@@ -4,6 +4,23 @@ import com.loopin.player2.core.model.DeviceIdentity
 
 enum class PairingState { UNPAIRED, PAIRING, PAIRED, PAIRING_ERROR }
 
+data class PairingWindow(
+    val pairingToken: String,
+    val pairingCode: String,
+    val qrPayload: String,
+    val expiresAtElapsedMs: Long,
+) {
+    init {
+        require(pairingToken.length >= 32)
+        require(Regex("[0-9]{6}").matches(pairingCode))
+        require(qrPayload.isNotBlank())
+        require(expiresAtElapsedMs > 0)
+    }
+    fun isExpired(nowElapsedMs: Long): Boolean = nowElapsedMs >= expiresAtElapsedMs
+    fun secondsRemaining(nowElapsedMs: Long): Int =
+        ((expiresAtElapsedMs - nowElapsedMs + 999L) / 1_000L).toInt().coerceAtLeast(0)
+}
+
 data class DeviceAssignment(
     val establishmentId: String? = null,
     val screenName: String? = null,

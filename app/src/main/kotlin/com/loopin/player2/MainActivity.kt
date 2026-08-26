@@ -9,6 +9,7 @@ import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.loopin.player2.core.model.DeviceRuntimeState
@@ -39,6 +40,10 @@ class MainActivity : Activity() {
     private lateinit var playbackSurface: PlaybackSurface
     private lateinit var identityPanel: View
     private lateinit var statusView: TextView
+    private lateinit var pairingCodeView: TextView
+    private lateinit var pairingQrView: ImageView
+    private lateinit var pairingHintView: TextView
+    private var pairingCoordinator: PairingCoordinator? = null
     private var diagnosticView: TextView? = null
     private var latestPlayback = PlaybackSnapshot()
     private var diagnosticsVisible = false
@@ -52,6 +57,7 @@ class MainActivity : Activity() {
         setContentView(createPlaybackScreen())
         stateSubscription = container.stateManager.subscribe(::renderDeviceState)
         dynamicContent?.start()
+        if (!isPaired()) startPairing()
         container.logger.log(
             LogLevel.INFO,
             TAG,
@@ -61,12 +67,12 @@ class MainActivity : Activity() {
 
     override fun onStart() {
         super.onStart()
-        if (Build.VERSION.SDK_INT > 23) startPlayback()
+        if (Build.VERSION.SDK_INT > 23 && isPaired()) startPlayback()
     }
 
     override fun onResume() {
         super.onResume()
-        if (Build.VERSION.SDK_INT <= 23) startPlayback()
+        if (Build.VERSION.SDK_INT <= 23 && isPaired()) startPlayback()
         kioskController.enter()
     }
 
@@ -87,6 +93,8 @@ class MainActivity : Activity() {
 
     override fun onDestroy() {
         releasePlayback()
+        pairingCoordinator?.close()
+        pairingCoordinator = null
         dynamicContent?.close()
         dynamicContent = null
         stateSubscription?.close()
@@ -181,16 +189,26 @@ class MainActivity : Activity() {
             setBackgroundColor(Color.rgb(11, 13, 16))
             addView(TextView(context).apply {
                 text = getString(R.string.app_name)
-                textSize = 28f
+                textSize = 24f
                 setTextColor(Color.rgb(245, 247, 250))
                 gravity = Gravity.CENTER
             })
-            addView(TextView(context).apply {
-                text = container.config.identity.friendlyCode
-                textSize = 32f
-                setTextColor(Color.rgb(245, 247, 250))
-                gravity = Gravity.CENTER
-                setPadding(0, (20 * density).toInt(), 0, 0)
+            addView(TextView(context).also {
+                pairingCodeView = it
+                it.text = if (isPaired()) container.config.identity.friendlyCode else "— — — — — —"
+                it.textSize = 36f
+                it.setTextColor(Color.rgb(245, 247, 250))
+                it.gravity = Gravity.CENTER
+                it.letterSpacing = 0.18f
+                it.setPadding(0, (14 * density).toInt(), 0, 0)
+            })
+            addView(ImageView(context).also {
+                pairingQrView = it
+                it.setBackgroundColor(Color.WHITE)
+                it.setPadding((8 * density).toInt(), (8 * density).toInt(), (8 * density).toInt(), (8 * density).toInt())
+                it.visibility = if (isPaired()) View.GONE else View.INVISIBLE
+            }, LinearLayout.LayoutParams((190 * density).toInt(), (190 * density).toInt()).apply {
+                topMargin = (14 * density).toInt()
             })
             addView(TextView(context).also {
                 statusView = it
@@ -199,16 +217,52 @@ class MainActivity : Activity() {
                 it.gravity = Gravity.CENTER
                 it.setPadding(0, (12 * density).toInt(), 0, 0)
             })
-            addView(TextView(context).apply {
-                text = if (container.pairingManager.snapshot().state == PairingState.UNPAIRED)
-                    getString(R.string.awaiting_configuration) else ""
-                textSize = 14f
-                setTextColor(Color.rgb(167, 176, 190))
-                gravity = Gravity.CENTER
-                setPadding(0, (10 * density).toInt(), 0, 0)
+            addView(TextView(context).also {
+                pairingHintView = it
+                it.text = if (!isPaired()) getString(R.string.awaiting_configuration) else ""
+                it.textSize = 13f
+                it.setTextColor(Color.rgb(167, 176, 190))
+                it.gravity = Gravity.CENTER
+                it.setPadding(0, (8 * density).toInt(), 0, 0)
             })
         }
     }
+
+    private fun startPairing() {
+        pairingCoordinator?.close()
+        pairingCoordinator = PairingCoordinator(
+            BuildConfig.PAIRING_ENDPOINT,
+            container.config.identity,
+            DeviceCredentialStore(this),
+            container.pairingManager,
+            container.logger,
+            onDisplay = { state -> runOnUiThread { renderPairing(state) } },
+            onPaired = { runOnUiThread {
+                pairingQrView.visibility = View.GONE
+                pairingHintView.text = getString(R.string.pairing_complete)
+                identityPanel.visibility = View.GONE
+                startPlayback()
+            } },
+        ).also(PairingCoordinator::start)
+    }
+
+    private fun renderPairing(state: PairingDisplayState) {
+        if (isPaired()) return
+        identityPanel.visibility = View.VISIBLE
+        pairingCodeView.text = state.code?.chunked(3)?.joinToString(" ") ?: "— — — — — —"
+        val payload = state.qrPayload
+        if (payload != null) {
+            pairingQrView.setImageBitmap(pairingQrBitmap(payload, 360))
+            pairingQrView.visibility = View.VISIBLE
+            pairingHintView.text = getString(R.string.pairing_expires, state.secondsRemaining)
+        } else {
+            pairingQrView.visibility = View.INVISIBLE
+            pairingHintView.text = if (state.waitingForNetwork) getString(R.string.pairing_waiting_network)
+            else state.error ?: getString(R.string.awaiting_configuration)
+        }
+    }
+
+    private fun isPaired(): Boolean = container.pairingManager.snapshot().state == PairingState.PAIRED
 
     private fun renderDeviceState(state: DeviceRuntimeState) {
         runOnUiThread {
@@ -243,7 +297,7 @@ class MainActivity : Activity() {
                 container.logger.log(LogLevel.ERROR, TAG, OperationalLogEvent.PLAYBACK_ERROR + ": " + snapshot.lastError)
                 statusView.text = getString(R.string.content_unavailable, container.config.identity.friendlyCode)
             }
-            identityPanel.visibility = when (snapshot.state) {
+            identityPanel.visibility = if (!isPaired()) View.VISIBLE else when (snapshot.state) {
                 PlaybackState.IDLE, PlaybackState.ERROR -> View.VISIBLE
                 else -> View.GONE
             }

@@ -54,6 +54,18 @@ class DeviceOperationsTest {
         val store = MemoryPairingStore(); DevicePairingManager(store).complete(DeviceAssignment(playlistId = "p1"))
         assertEquals(PairingState.PAIRED, DevicePairingManager(store).snapshot().state)
     }
+    @Test fun `temporary pairing code expires at backend window boundary`() {
+        val window = PairingWindow("t".repeat(43), "582731", "loopin://pair?token=${"t".repeat(43)}", 30_000)
+        assertEquals(1, window.secondsRemaining(29_001))
+        assertTrue(window.isExpired(30_000))
+        assertEquals(0, window.secondsRemaining(30_000))
+    }
+    @Test fun `pairing manager does not regenerate challenge after permanent pairing`() {
+        val store = MemoryPairingStore()
+        DevicePairingManager(store).complete(DeviceAssignment(screenName = "Loja", deviceSettings = mapOf("device_id" to "uuid")))
+        assertEquals(PairingState.PAIRED, DevicePairingManager(store).snapshot().state)
+        assertEquals("uuid", store.value.assignment?.deviceSettings?.get("device_id"))
+    }
     @Test fun `update channel recovers after reboot`() {
         val store = MemoryUpdateStore(); OperationalUpdateManager(store, "2.0").setChannel(UpdateChannel.BETA)
         assertEquals(UpdateChannel.BETA, OperationalUpdateManager(store, "2.0").snapshot().channel)

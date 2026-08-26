@@ -13,7 +13,8 @@ android {
         minSdk = 21
         targetSdk = 36
         versionCode = 1
-        versionName = "2.0.0-phase7.6"
+        versionName = "2.0.0-phase8-pairing"
+        buildConfigField("String", "PAIRING_ENDPOINT", "\"https://sxsmirhqbslmvyesikgg.supabase.co/functions/v1/device-pairing\"")
     }
 
     buildTypes {
@@ -45,4 +46,5 @@ dependencies {
     implementation(project(":core:sync"))
     implementation(project(":core:operations"))
     implementation(project(":core:content"))
+    implementation("com.google.zxing:core:3.5.4")
 }

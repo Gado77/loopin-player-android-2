@@ -8,6 +8,9 @@
     <string name="debug_playback_status">%1$s • %2$s • loop %3$d</string>
     <string name="debug_no_item">none</string>
     <string name="awaiting_configuration">Aguardando configuração…</string>
+    <string name="pairing_waiting_network">Conectando para gerar um código temporário…</string>
+    <string name="pairing_expires">Escaneie o QR Code ou digite o código no Admin • renova em %1$d s</string>
+    <string name="pairing_complete">Pareamento concluído</string>
     <string name="content_unavailable">Conteúdo temporariamente indisponível\nCódigo da tela: %1$s</string>
     <string name="weather_forecast_title">PRÓXIMOS DIAS</string>
     <string name="weather_legacy_title">PREVISÃO DO TEMPO</string>
