@@ -1018,6 +1018,7 @@ Ao concluir:
 - `docs/PHASE7_4_LEGACY_WEATHER_PORT.md`: auditoria do Android antigo, port visual e assets.
 - `docs/PHASE7_5_WEATHER_COMPOSITION_REFINEMENT.md`: painel WEATHER único, remoção da cápsula térmica e relógio compacto.
 - `docs/PHASE7_6_WEATHER_FOCUS_REFINEMENT.md`: temperatura numericamente centralizada, grau independente e remoção da previsão visual.
+- `docs/PHASE8_BACKEND_READINESS_AUDIT.md`: auditoria dos contratos reais do Admin, lacunas de segurança e bloqueios para integração operacional.
 
 ## 29. Fonte de verdade
 
