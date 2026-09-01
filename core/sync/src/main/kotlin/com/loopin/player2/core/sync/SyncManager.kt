@@ -1,150 +1,20 @@
 package com.loopin.player2.core.sync
-
-import com.loopin.player2.core.cache.PreparationResult
-import com.loopin.player2.core.cache.PublicationResult
-import com.loopin.player2.core.cache.TransactionalPlaylistStore
+import com.loopin.player2.core.cache.*
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicBoolean
-
-enum class SyncState {
-    IDLE, CHECKING, UP_TO_DATE, UPDATE_AVAILABLE, PREPARING, DOWNLOADING,
-    VALIDATING, COMMITTING, SUCCESS, FAILED, OFFLINE,
+import java.security.MessageDigest
+enum class SyncState{IDLE,CHECKING,UP_TO_DATE,NO_ASSIGNMENT,AUTHENTICATION_FAILED,UPDATE_AVAILABLE,PREPARING,DOWNLOADING,VALIDATING,COMMITTING,SUCCESS,FAILED,OFFLINE}
+data class SyncSnapshot(val state:SyncState=SyncState.IDLE,val localVersion:Long?=null,val remoteVersion:Long?=null,val detail:String?=null)
+enum class SyncEvent{SYNC_STARTED,SYNC_CHECKED,SYNC_UP_TO_DATE,SYNC_NO_ASSIGNMENT,SYNC_AUTH_FAILED,SYNC_UPDATE_AVAILABLE,SYNC_DOWNLOAD_STARTED,SYNC_DOWNLOAD_COMPLETED,SYNC_VALIDATION_FAILED,SYNC_COMMIT_STARTED,SYNC_COMMIT_SUCCESS,SYNC_FAILED,SYNC_OFFLINE}
+fun interface SyncEventSink{fun record(event:SyncEvent,detail:String?)}
+sealed interface SyncResult{data class Success(val version:Long):SyncResult;data class UpToDate(val version:Long?):SyncResult;data object NoAssignment:SyncResult;data object AuthenticationFailed:SyncResult;data class Failed(val reason:String,val retryable:Boolean):SyncResult;data class Offline(val reason:String):SyncResult;data object AlreadyRunning:SyncResult}
+class SyncManager(private val remoteManifestSource:RemoteManifestSource,private val localManifestSource:LocalManifestSource,private val mediaSourceFactory:RemoteMediaSourceFactory,private val store:TransactionalPlaylistStore,private val events:SyncEventSink=SyncEventSink{_,_->},private val onCommitted:()->Unit={} ){
+ private val running=AtomicBoolean();private val listeners=CopyOnWriteArrayList<(SyncSnapshot)->Unit>();@Volatile var snapshot=SyncSnapshot();private set
+ fun syncOnce():SyncResult{if(!running.compareAndSet(false,true))return SyncResult.AlreadyRunning;return try{val active=localManifestSource.active();publish(SyncSnapshot(SyncState.CHECKING,active?.playlistVersion));emit(SyncEvent.SYNC_STARTED,null);when(val r=remoteManifestSource.fetch(active)){RemoteManifestResult.Unchanged->up(active?.playlistVersion);RemoteManifestResult.NoAssignment->{publish(snapshot.copy(state=SyncState.NO_ASSIGNMENT));emit(SyncEvent.SYNC_NO_ASSIGNMENT,null);SyncResult.NoAssignment};RemoteManifestResult.AuthenticationFailed->{publish(snapshot.copy(state=SyncState.AUTHENTICATION_FAILED));emit(SyncEvent.SYNC_AUTH_FAILED,null);SyncResult.AuthenticationFailed};is RemoteManifestResult.Offline->{publish(snapshot.copy(state=SyncState.OFFLINE,detail=r.reason));emit(SyncEvent.SYNC_OFFLINE,r.reason);SyncResult.Offline(r.reason)};is RemoteManifestResult.Failed->fail(r.reason,r.retryable);is RemoteManifestResult.Available->sync(r,active)}}finally{running.set(false)}}
+ fun subscribe(l:(SyncSnapshot)->Unit):AutoCloseable{listeners+=l;l(snapshot);return AutoCloseable{listeners-=l}}
+ private fun sync(r:RemoteManifestResult.Available,active:PublishedVersionRef?):SyncResult{val m=r.manifest;emit(SyncEvent.SYNC_CHECKED,"remote=${m.playlistId}:${m.playlistVersion}");val canonical=MessageDigest.getInstance("SHA-256").digest(VersionedManifestCodec.encode(m).toByteArray()).joinToString(""){"%02x".format(it)};if(active?.manifestSha256==r.manifestSha256||active?.versionRef==canonical)return up(active.playlistVersion);publish(SyncSnapshot(SyncState.UPDATE_AVAILABLE,active?.playlistVersion,m.playlistVersion));emit(SyncEvent.SYNC_UPDATE_AVAILABLE,null);publish(snapshot.copy(state=SyncState.DOWNLOADING));emit(SyncEvent.SYNC_DOWNLOAD_STARTED,"items=${m.items.size}");val p=store.prepare(m,mediaSourceFactory::sourceFor);if(p !is PreparationResult.Ready)return fail((p as PreparationResult.Rejected).reason,true);emit(SyncEvent.SYNC_DOWNLOAD_COMPLETED,"created=${p.createdObjects}");publish(snapshot.copy(state=SyncState.COMMITTING));return when(val c=store.commit(p.versionRef)){is PublicationResult.Committed->{publish(SyncSnapshot(SyncState.SUCCESS,c.activeVersion,m.playlistVersion));emit(SyncEvent.SYNC_COMMIT_SUCCESS,"active=${c.activeVersion}");onCommitted();SyncResult.Success(c.activeVersion)};is PublicationResult.Rejected->fail(c.reason,true)}}
+ private fun up(v:Long?):SyncResult{publish(SyncSnapshot(SyncState.UP_TO_DATE,v,v));emit(SyncEvent.SYNC_UP_TO_DATE,null);return SyncResult.UpToDate(v)}
+ private fun fail(s:String,r:Boolean):SyncResult{publish(snapshot.copy(state=SyncState.FAILED,detail=s));emit(SyncEvent.SYNC_FAILED,s);return SyncResult.Failed(s,r)}
+ private fun publish(v:SyncSnapshot){snapshot=v;listeners.forEach{it(v)}};private fun emit(e:SyncEvent,d:String?)=runCatching{events.record(e,d)}
 }
-
-data class SyncSnapshot(
-    val state: SyncState = SyncState.IDLE,
-    val localVersion: Long? = null,
-    val remoteVersion: Long? = null,
-    val detail: String? = null,
-)
-
-enum class SyncEvent {
-    SYNC_STARTED,
-    SYNC_CHECKED,
-    SYNC_UP_TO_DATE,
-    SYNC_UPDATE_AVAILABLE,
-    SYNC_DOWNLOAD_STARTED,
-    SYNC_DOWNLOAD_COMPLETED,
-    SYNC_VALIDATION_FAILED,
-    SYNC_COMMIT_STARTED,
-    SYNC_COMMIT_SUCCESS,
-    SYNC_FAILED,
-    SYNC_OFFLINE,
-}
-
-fun interface SyncEventSink {
-    fun record(event: SyncEvent, detail: String?)
-}
-
-sealed interface SyncResult {
-    data class Success(val version: Long) : SyncResult
-    data class UpToDate(val version: Long?) : SyncResult
-    data class Failed(val reason: String, val retryable: Boolean) : SyncResult
-    data class Offline(val reason: String) : SyncResult
-    data object AlreadyRunning : SyncResult
-}
-
-class SyncManager(
-    private val remoteManifestSource: RemoteManifestSource,
-    private val localManifestSource: LocalManifestSource,
-    private val mediaSourceFactory: RemoteMediaSourceFactory,
-    private val store: TransactionalPlaylistStore,
-    private val events: SyncEventSink = SyncEventSink { _, _ -> },
-) {
-    private val running = AtomicBoolean(false)
-    private val listeners = CopyOnWriteArrayList<(SyncSnapshot) -> Unit>()
-
-    @Volatile
-    var snapshot: SyncSnapshot = SyncSnapshot()
-        private set
-
-    fun syncOnce(): SyncResult {
-        if (!running.compareAndSet(false, true)) return SyncResult.AlreadyRunning
-        return try {
-            val localVersion = localManifestSource.activeVersion()
-            publish(SyncSnapshot(SyncState.CHECKING, localVersion))
-            emit(SyncEvent.SYNC_STARTED, "localVersion=$localVersion")
-            when (val remote = remoteManifestSource.fetch(localVersion)) {
-                RemoteManifestResult.Unchanged -> upToDate(localVersion)
-                is RemoteManifestResult.Offline -> offline(remote.reason, localVersion)
-                is RemoteManifestResult.Failed -> failed(remote.reason, remote.retryable, localVersion)
-                is RemoteManifestResult.Available -> synchronizeManifest(remote.manifest, localVersion)
-            }
-        } finally {
-            running.set(false)
-        }
-    }
-
-    fun subscribe(listener: (SyncSnapshot) -> Unit): AutoCloseable {
-        listeners += listener
-        listener(snapshot)
-        return AutoCloseable { listeners -= listener }
-    }
-
-    private fun synchronizeManifest(manifest: com.loopin.player2.core.cache.MediaManifest, localVersion: Long?): SyncResult {
-        emit(SyncEvent.SYNC_CHECKED, "remoteVersion=${manifest.playlistVersion}")
-        if (localVersion != null && manifest.playlistVersion <= localVersion) return upToDate(localVersion)
-        publish(SyncSnapshot(SyncState.UPDATE_AVAILABLE, localVersion, manifest.playlistVersion))
-        emit(SyncEvent.SYNC_UPDATE_AVAILABLE, "remoteVersion=${manifest.playlistVersion}")
-        publish(snapshot.copy(state = SyncState.PREPARING))
-        publish(snapshot.copy(state = SyncState.DOWNLOADING))
-        emit(SyncEvent.SYNC_DOWNLOAD_STARTED, "items=${manifest.items.size}")
-        val prepared = store.prepare(manifest, mediaSourceFactory::sourceFor)
-        if (prepared !is PreparationResult.Ready) {
-            val reason = (prepared as PreparationResult.Rejected).reason
-            emit(SyncEvent.SYNC_VALIDATION_FAILED, reason)
-            return failed(reason, true, localVersion, manifest.playlistVersion)
-        }
-        emit(SyncEvent.SYNC_DOWNLOAD_COMPLETED, "created=${prepared.createdObjects} reused=${prepared.reusedObjects}")
-        publish(snapshot.copy(state = SyncState.VALIDATING))
-        publish(snapshot.copy(state = SyncState.COMMITTING))
-        emit(SyncEvent.SYNC_COMMIT_STARTED, "version=${manifest.playlistVersion}")
-        return when (val commit = store.commit(prepared.versionRef)) {
-            is PublicationResult.Committed -> {
-                publish(SyncSnapshot(SyncState.SUCCESS, commit.activeVersion, manifest.playlistVersion))
-                emit(SyncEvent.SYNC_COMMIT_SUCCESS, "active=${commit.activeVersion}")
-                SyncResult.Success(commit.activeVersion)
-            }
-            is PublicationResult.Rejected -> failed(commit.reason, true, localVersion, manifest.playlistVersion)
-        }
-    }
-
-    private fun upToDate(version: Long?): SyncResult {
-        publish(SyncSnapshot(SyncState.UP_TO_DATE, version, version))
-        emit(SyncEvent.SYNC_UP_TO_DATE, "version=$version")
-        return SyncResult.UpToDate(version)
-    }
-
-    private fun offline(reason: String, localVersion: Long?): SyncResult {
-        publish(SyncSnapshot(SyncState.OFFLINE, localVersion, detail = reason))
-        emit(SyncEvent.SYNC_OFFLINE, reason)
-        return SyncResult.Offline(reason)
-    }
-
-    private fun failed(reason: String, retryable: Boolean, local: Long?, remote: Long? = null): SyncResult {
-        publish(SyncSnapshot(SyncState.FAILED, local, remote, reason))
-        emit(SyncEvent.SYNC_FAILED, reason)
-        return SyncResult.Failed(reason, retryable)
-    }
-
-    private fun publish(value: SyncSnapshot) {
-        snapshot = value
-        listeners.forEach { it(value) }
-    }
-
-    private fun emit(event: SyncEvent, detail: String?) = runCatching { events.record(event, detail) }
-}
-
-data class SyncRetryPolicy(
-    val shortDelayMs: Long = 30_000L,
-    val mediumDelayMs: Long = 2L * 60L * 1_000L,
-    val longDelayMs: Long = 10L * 60L * 1_000L,
-    val regularIntervalMs: Long = 6L * 60L * 60L * 1_000L,
-) {
-    fun delayAfterFailure(consecutiveFailures: Int): Long = when (consecutiveFailures) {
-        1 -> shortDelayMs
-        2 -> mediumDelayMs
-        3 -> longDelayMs
-        else -> regularIntervalMs
-    }
-}
+data class SyncRetryPolicy(val regularIntervalMs:Long=300000,val authDelayMs:Long=3600000){fun delayAfterFailure(n:Int)=when(n){1->60000L;2->300000L;3->900000L;else->1800000L}}

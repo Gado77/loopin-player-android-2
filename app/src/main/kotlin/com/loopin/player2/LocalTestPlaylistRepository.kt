@@ -26,17 +26,16 @@ class LocalTestPlaylistRepository(
     private val store: TransactionalPlaylistStore = TransactionalPlaylistStore(File(context.filesDir, "transactional-media")),
 ) : PlaylistRepository {
 
-    override fun loadActivePlaylist(): Playlist = withConfiguredDynamicItems(store.loadActivePlaylist() ?: bundledFallbackPlaylist(1))
+    override fun loadActivePlaylist(): Playlist = store.loadActivePlaylist() ?: withConfiguredDynamicItems(bundledFallbackPlaylist(1))
 
     override fun loadActivePlaylistAsync(onLoaded: (Playlist) -> Unit) {
         Thread({
             val playlist = runCatching {
-                ensureMockPublication()
                 store.loadActivePlaylist() ?: bundledFallbackPlaylist(1)
             }.onFailure { error ->
                 logger.log(LogLevel.ERROR, TAG, "Transactional playlist initialization failed", error)
             }.getOrElse { bundledFallbackPlaylist(1) }
-            onLoaded(withConfiguredDynamicItems(playlist))
+            onLoaded(if (store.publicationState() == null) withConfiguredDynamicItems(playlist) else playlist)
         }, "loopin-playlist-prepare").apply {
             isDaemon = true
             start()

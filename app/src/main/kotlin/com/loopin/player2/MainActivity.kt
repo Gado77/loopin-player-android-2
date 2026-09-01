@@ -242,6 +242,7 @@ class MainActivity : Activity() {
                 pairingHintView.text = getString(R.string.pairing_complete)
                 identityPanel.visibility = View.GONE
                 container.heartbeatScheduler.schedule()
+                container.syncScheduler?.schedule(0)
                 startPlayback()
             } },
         ).also(PairingCoordinator::start)

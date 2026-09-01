@@ -1,163 +1,52 @@
 package com.loopin.player2.core.sync
 
-import com.loopin.player2.core.cache.ManifestItem
-import com.loopin.player2.core.cache.MediaManifest
-import com.loopin.player2.core.cache.MediaSource
-import java.io.ByteArrayOutputStream
-import java.io.FilterInputStream
-import java.io.IOException
+import com.loopin.player2.core.cache.*
+import java.io.*
 import java.net.HttpURLConnection
 import java.net.URL
-import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.CopyOnWriteArrayList
-import kotlinx.serialization.SerializationException
-import kotlinx.serialization.json.Json
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.serialization.json.*
 
 sealed interface RemoteManifestResult {
-    data class Available(val manifest: MediaManifest) : RemoteManifestResult
-    data object Unchanged : RemoteManifestResult
-    data class Offline(val reason: String) : RemoteManifestResult
-    data class Failed(val reason: String, val retryable: Boolean) : RemoteManifestResult
+ data class Available(val manifest: VersionedManifest,val manifestSha256:String):RemoteManifestResult
+ data object Unchanged:RemoteManifestResult; data object NoAssignment:RemoteManifestResult
+ data object AuthenticationFailed:RemoteManifestResult
+ data class Offline(val reason:String):RemoteManifestResult
+ data class Failed(val reason:String,val retryable:Boolean):RemoteManifestResult
 }
-
-fun interface RemoteManifestSource {
-    fun fetch(currentVersion: Long?): RemoteManifestResult
-}
-
-fun interface LocalManifestSource {
-    fun activeVersion(): Long?
-}
-
-fun interface RemoteMediaSourceFactory {
-    fun sourceFor(item: ManifestItem): MediaSource?
-}
-
-class HttpRemoteMediaSourceFactory(
-    private val cancellation: CancellationSignal = CancellationSignal(),
-) : RemoteMediaSourceFactory {
-    override fun sourceFor(item: ManifestItem): MediaSource? =
-        item.remoteUrl?.takeIf(::isHttpUrl)?.let { CancellableHttpMediaSource(it, cancellation) }
-}
-
+fun interface RemoteManifestSource { fun fetch(active:PublishedVersionRef?):RemoteManifestResult }
+fun interface LocalManifestSource { fun active():PublishedVersionRef? }
+fun interface RemoteMediaSourceFactory { fun sourceFor(item:NormalMediaContent):MediaSource? }
 class CancellationSignal {
-    private val cancelled = AtomicBoolean(false)
-    private val callbacks = CopyOnWriteArrayList<() -> Unit>()
-    fun cancel() {
-        if (cancelled.compareAndSet(false, true)) callbacks.forEach { runCatching(it) }
-    }
-    fun throwIfCancelled() {
-        if (cancelled.get() || Thread.currentThread().isInterrupted) throw IOException("HTTP request cancelled")
-    }
-    fun onCancel(callback: () -> Unit): AutoCloseable {
-        callbacks += callback
-        if (cancelled.get()) callback()
-        return AutoCloseable { callbacks -= callback }
-    }
+ private val cancelled=AtomicBoolean(); private val callbacks=CopyOnWriteArrayList<()->Unit>()
+ fun cancel(){if(cancelled.compareAndSet(false,true))callbacks.forEach{runCatching(it)}}
+ fun throwIfCancelled(){if(cancelled.get()||Thread.currentThread().isInterrupted)throw IOException("HTTP request cancelled")}
+ fun onCancel(callback:()->Unit):AutoCloseable{callbacks+=callback;if(cancelled.get())callback();return AutoCloseable{callbacks-=callback}}
 }
-
-private class CancellableHttpMediaSource(
-    private val url: String,
-    private val cancellation: CancellationSignal,
-) : MediaSource {
-    override fun open(): java.io.InputStream {
-        cancellation.throwIfCancelled()
-        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
-            connectTimeout = 10_000
-            readTimeout = 30_000
-            instanceFollowRedirects = true
-        }
-        val registration = cancellation.onCancel(connection::disconnect)
-        try {
-            connection.connect()
-            val status = connection.responseCode
-            if (status !in 200..299) throw IOException("Media HTTP $status")
-            return object : FilterInputStream(connection.inputStream) {
-                override fun read(): Int {
-                    cancellation.throwIfCancelled()
-                    return super.read()
-                }
-                override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
-                    cancellation.throwIfCancelled()
-                    return super.read(buffer, offset, length)
-                }
-                override fun close() {
-                    runCatching { super.close() }
-                    registration.close()
-                    connection.disconnect()
-                }
-            }
-        } catch (error: Exception) {
-            registration.close()
-            connection.disconnect()
-            throw error
-        }
-    }
+class AuthenticatedRemoteManifestSource(private val endpoint:String,private val credential:()->String?,private val cancellation:CancellationSignal=CancellationSignal()):RemoteManifestSource{
+ override fun fetch(active:PublishedVersionRef?):RemoteManifestResult{
+  val secret=credential()?.takeIf(String::isNotBlank)?:return RemoteManifestResult.AuthenticationFailed
+  if(!isHttpUrl(endpoint))return RemoteManifestResult.Failed("Invalid manifest endpoint",false)
+  var c:HttpURLConnection?=null;var registration:AutoCloseable?=null
+  return try{c=(URL(endpoint).openConnection() as HttpURLConnection).apply{connectTimeout=10000;readTimeout=20000;setRequestProperty("Accept","application/json");setRequestProperty("Authorization","Bearer $secret");active?.manifestSha256?.let{setRequestProperty("If-None-Match","\"$it\"")}}
+   registration=cancellation.onCancel(c::disconnect)
+   when(val status=c.responseCode){204->RemoteManifestResult.NoAssignment;304->RemoteManifestResult.Unchanged;401->RemoteManifestResult.AuthenticationFailed;409->RemoteManifestResult.Failed("Manifest assignment conflict",false)
+    in 200..299->{val etag=c.getHeaderField("ETag")?.trim()?.removeSurrounding("\"");if(etag==null||!SHA.matches(etag))RemoteManifestResult.Failed("Manifest response has invalid ETag",false)else RemoteManifestResult.Available(VersionedManifestCodec.decode(readBounded(c,1048576)),etag.lowercase())}
+    else->RemoteManifestResult.Failed("Manifest HTTP $status",status==408||status==429||status>=500)}
+  }catch(e:IllegalArgumentException){RemoteManifestResult.Failed(e.message?:"Invalid manifest",false)}catch(e:IOException){RemoteManifestResult.Offline(e.message?:"Network unavailable")}finally{registration?.close();c?.disconnect()}
+ }
+ private companion object{val SHA=Regex("[A-Fa-f0-9]{64}")}
 }
-
-class HttpRemoteManifestSource private constructor(
-    private val manifestUrl: String,
-    private val cancellation: CancellationSignal,
-    private val json: Json,
-) : RemoteManifestSource {
-    constructor(manifestUrl: String) : this(manifestUrl, CancellationSignal(), Json { ignoreUnknownKeys = false })
-    constructor(manifestUrl: String, cancellation: CancellationSignal) : this(
-        manifestUrl,
-        cancellation,
-        Json { ignoreUnknownKeys = false },
-    )
-    override fun fetch(currentVersion: Long?): RemoteManifestResult {
-        if (!isHttpUrl(manifestUrl)) return RemoteManifestResult.Failed("Invalid manifest URL", false)
-        var connection: HttpURLConnection? = null
-        var cancellationRegistration: AutoCloseable? = null
-        return try {
-            cancellation.throwIfCancelled()
-            connection = (URL(manifestUrl).openConnection() as HttpURLConnection).apply {
-                connectTimeout = CONNECT_TIMEOUT_MS
-                readTimeout = READ_TIMEOUT_MS
-                instanceFollowRedirects = true
-                setRequestProperty("Accept", "application/json")
-                currentVersion?.let { setRequestProperty("X-Loopin-Playlist-Version", it.toString()) }
-            }
-            cancellationRegistration = cancellation.onCancel(connection::disconnect)
-            val status = connection.responseCode
-            if (status == HttpURLConnection.HTTP_NOT_MODIFIED) return RemoteManifestResult.Unchanged
-            if (status !in 200..299) {
-                return RemoteManifestResult.Failed("Manifest HTTP $status", status == 408 || status == 429 || status >= 500)
-            }
-            val bytes = connection.inputStream.use { input ->
-                val output = ByteArrayOutputStream()
-                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                while (true) {
-                    cancellation.throwIfCancelled()
-                    val count = input.read(buffer)
-                    if (count < 0) break
-                    if (output.size() + count > MAX_MANIFEST_BYTES) throw IOException("Manifest exceeds size limit")
-                    output.write(buffer, 0, count)
-                }
-                output.toByteArray()
-            }
-            val manifest = json.decodeFromString(MediaManifest.serializer(), bytes.toString(Charsets.UTF_8)).validate()
-            RemoteManifestResult.Available(manifest)
-        } catch (error: SerializationException) {
-            RemoteManifestResult.Failed("Invalid manifest JSON", false)
-        } catch (error: IllegalArgumentException) {
-            RemoteManifestResult.Failed(error.message ?: "Invalid manifest", false)
-        } catch (error: IOException) {
-            RemoteManifestResult.Offline(error.message ?: "Network unavailable")
-        } finally {
-            cancellationRegistration?.close()
-            connection?.disconnect()
-        }
-    }
-
-    private companion object {
-        const val CONNECT_TIMEOUT_MS = 10_000
-        const val READ_TIMEOUT_MS = 20_000
-        const val MAX_MANIFEST_BYTES = 1_048_576
-    }
+class AuthenticatedRemoteMediaSourceFactory(private val endpoint:String,private val credential:()->String?,private val cancellation:CancellationSignal=CancellationSignal()):RemoteMediaSourceFactory{
+ override fun sourceFor(item:NormalMediaContent):MediaSource?{val secret=credential()?.takeIf(String::isNotBlank)?:return null;return MediaSource{
+  val c=(URL(endpoint).openConnection() as HttpURLConnection).apply{requestMethod="POST";doOutput=true;connectTimeout=10000;readTimeout=20000;setRequestProperty("Content-Type","application/json");setRequestProperty("Authorization","Bearer $secret")}
+  try{c.outputStream.use{it.write("{\"asset_id\":\"${item.assetId}\"}".toByteArray())};if(c.responseCode !in 200..299)throw IOException("Media authorization HTTP ${c.responseCode}");val u=Json.parseToJsonElement(readBounded(c,16384)).jsonObject["download_url"]?.jsonPrimitive?.content?:throw IOException("Media authorization response invalid");HttpMediaSource(u,cancellation).open()}finally{c.disconnect()}
+ }}
 }
-
-internal fun isHttpUrl(value: String): Boolean = runCatching {
-    val protocol = URL(value).protocol.lowercase()
-    protocol == "http" || protocol == "https"
-}.getOrDefault(false)
+private class HttpMediaSource(private val url:String,private val cancellation:CancellationSignal):MediaSource{
+ override fun open():InputStream{cancellation.throwIfCancelled();val c=(URL(url).openConnection() as HttpURLConnection).apply{connectTimeout=10000;readTimeout=30000;instanceFollowRedirects=true};val r=cancellation.onCancel(c::disconnect)
+  try{if(c.responseCode !in 200..299)throw IOException("Media download failed");return object:FilterInputStream(c.inputStream){override fun read()=super.read().also{cancellation.throwIfCancelled()};override fun read(b:ByteArray,o:Int,l:Int)=super.read(b,o,l).also{cancellation.throwIfCancelled()};override fun close(){runCatching{super.close()};r.close();c.disconnect()}}}catch(e:Exception){r.close();c.disconnect();throw e}}
+}
+private fun readBounded(c:HttpURLConnection,limit:Int)=c.inputStream.use{input->val out=ByteArrayOutputStream();val b=ByteArray(8192);while(true){val n=input.read(b);if(n<0)break;if(out.size()+n>limit)throw IOException("Response exceeds size limit");out.write(b,0,n)};out.toString(Charsets.UTF_8.name())}
+internal fun isHttpUrl(v:String)=runCatching{URL(v).protocol.lowercase() in setOf("http","https")}.getOrDefault(false)

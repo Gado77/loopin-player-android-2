@@ -23,7 +23,7 @@ class RemoteSyncConfigStore(context: Context) {
     private val preferences = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
 
     fun load(): RemoteSyncConfig = RemoteSyncConfig(
-        manifestUrl = preferences.getString(KEY_MANIFEST_URL, "").orEmpty().trim(),
+        manifestUrl = BuildConfig.MANIFEST_ENDPOINT,
         intervalMs = preferences.getLong(KEY_INTERVAL_MS, DEFAULT_INTERVAL_MS).coerceAtLeast(MINIMUM_INTERVAL_MS),
     )
 
@@ -31,8 +31,8 @@ class RemoteSyncConfigStore(context: Context) {
         const val PREFERENCES = "loopin_remote_sync"
         const val KEY_MANIFEST_URL = "manifest_url"
         const val KEY_INTERVAL_MS = "interval_ms"
-        const val DEFAULT_INTERVAL_MS = 6L * 60L * 60L * 1_000L
-        const val MINIMUM_INTERVAL_MS = 15L * 60L * 1_000L
+        const val DEFAULT_INTERVAL_MS = 5L * 60L * 1_000L
+        const val MINIMUM_INTERVAL_MS = 60_000L
     }
 }
 
@@ -59,6 +59,7 @@ class ContentSyncScheduler(
     }
 
     fun scheduleAfter(result: SyncResult) {
+        if (result is SyncResult.AuthenticationFailed) { schedule(retryPolicy.authDelayMs); return }
         val retryable = result is SyncResult.Offline || result is SyncResult.Failed && result.retryable
         val failures = if (retryable) preferences.getInt(KEY_FAILURES, 0) + 1 else 0
         preferences.edit().putInt(KEY_FAILURES, failures).apply()

@@ -18,8 +18,8 @@ import com.loopin.player2.core.model.RemoteCommandHandler
 import com.loopin.player2.core.model.TelemetryEvent
 import com.loopin.player2.core.model.TelemetrySink
 import com.loopin.player2.core.cache.TransactionalPlaylistStore
-import com.loopin.player2.core.sync.HttpRemoteManifestSource
-import com.loopin.player2.core.sync.HttpRemoteMediaSourceFactory
+import com.loopin.player2.core.sync.AuthenticatedRemoteManifestSource
+import com.loopin.player2.core.sync.AuthenticatedRemoteMediaSourceFactory
 import com.loopin.player2.core.sync.LocalManifestSource
 import com.loopin.player2.core.sync.SyncEventSink
 import com.loopin.player2.core.sync.SyncManager
@@ -45,10 +45,11 @@ class LoopinApplication : Application(), Application.ActivityLifecycleCallbacks 
                     OperationalLogEvent.DEVICE_ONLINE else OperationalLogEvent.DEVICE_OFFLINE)
                 if (state.networkAvailable && container.pairingManager.snapshot().state == PairingState.PAIRED) {
                     container.heartbeatScheduler.schedule()
+                    container.syncScheduler?.schedule(0)
                 }
             }
         }
-        container.syncScheduler?.schedule()
+        if (container.pairingManager.snapshot().state == PairingState.PAIRED) container.syncScheduler?.schedule(0)
         container.telemetry.record(TelemetryEvent("foundation_started", System.currentTimeMillis()))
         container.logger.log(LogLevel.INFO, TAG, OperationalLogEvent.DEVICE_STARTED)
         container.logger.log(LogLevel.INFO, TAG, OperationalLogEvent.DEVICE_READY)
@@ -114,10 +115,11 @@ data class AppContainer(
             val transactionalStore = TransactionalPlaylistStore(java.io.File(application.filesDir, "transactional-media"))
             val operationalState = OperationalStateRegistry(application)
             val syncConfig = RemoteSyncConfigStore(application).load()
-            val syncManager = if (syncConfig.enabled) SyncManager(
-                remoteManifestSource = HttpRemoteManifestSource(syncConfig.manifestUrl),
-                localManifestSource = LocalManifestSource { transactionalStore.publicationState()?.active?.playlistVersion },
-                mediaSourceFactory = HttpRemoteMediaSourceFactory(),
+            val credentialStore = DeviceCredentialStore(application)
+            val syncManager = SyncManager(
+                remoteManifestSource = AuthenticatedRemoteManifestSource(BuildConfig.MANIFEST_ENDPOINT, credentialStore::credential),
+                localManifestSource = LocalManifestSource { transactionalStore.publicationState()?.active },
+                mediaSourceFactory = AuthenticatedRemoteMediaSourceFactory(BuildConfig.MEDIA_ENDPOINT, credentialStore::credential),
                 store = transactionalStore,
                 events = SyncEventSink { event, detail ->
                     logger.log(LogLevel.INFO, "ContentSync", "${event.name}${detail?.let { " $it" }.orEmpty()}")
@@ -127,12 +129,11 @@ data class AppContainer(
                         "SYNC_FAILED", "SYNC_VALIDATION_FAILED" -> operationalState.syncFailed(detail ?: event.name)
                     }
                 },
-            ) else null
-            val syncScheduler = if (syncManager != null) ContentSyncScheduler(application, syncConfig, logger) else null
+            )
+            val syncScheduler = ContentSyncScheduler(application, syncConfig, logger)
             val pairing = DevicePairingManager(AndroidPairingStore(application))
             val health = DeviceHealthManager(AndroidDeviceHealthCollector(application, config.identity, stateManager, operationalState, transactionalStore))
             val heartbeatSource = LocalHeartbeatSource(health)
-            val credentialStore = DeviceCredentialStore(application)
             val heartbeatScheduler = DeviceHeartbeatScheduler(application, logger)
             val heartbeatDispatcher = DeviceHeartbeatDispatcher(
                 endpoint = BuildConfig.PAIRING_ENDPOINT,

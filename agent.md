@@ -1082,3 +1082,6 @@ Regras permanentes mantidas: alterar somente Loopin Player 2.0/Admin 2/Supabase 
 ### Hardening 9.0.1
 
 A revisão pós-Fase 9 corrigiu o shape one-to-one da associação no Admin, listeners perdidos após refresh, opção visual de desassociação sem backend, divergências de validação WEATHER, metadados MEDIA fornecidos pelo cliente e inclusão de URL temporária no manifesto canônico. O servidor agora deriva tipo, SHA-256, tamanho e MIME diretamente do asset pertencente ao tenant. O APK permanece sem fetch/download remoto.
+# Estado atual — Fase 9.1
+
+A Fase 9 definiu contrato e associação de manifesto por tela. A Fase 9.1 ativa consulta autenticada, autorização temporária por asset, download streaming e publicação transacional do conteúdo remoto. Trechos históricos abaixo que descrevem sync/backend como inexistentes não representam mais o estado operacional.

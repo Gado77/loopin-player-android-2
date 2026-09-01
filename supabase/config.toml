@@ -7,3 +7,7 @@ entrypoint = "./functions/device-pairing/index.ts"
 [functions.player-manifest]
 verify_jwt = false
 entrypoint = "./functions/player-manifest/index.ts"
+
+[functions.player-media]
+verify_jwt = false
+entrypoint = "./functions/player-media/index.ts"
