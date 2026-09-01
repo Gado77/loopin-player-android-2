@@ -1,6 +1,6 @@
 # Loopin Player 2.0 — Documento mestre da reconstrução
 
-> Última atualização: 01/09/2026 — estado concluído até a Fase 8.3.
+> Última atualização: 01/09/2026 — estado concluído até a Fase 9.0.1.
 >
 > Este arquivo é o ponto de entrada para qualquer pessoa ou agente que continue o trabalho. Ele descreve o que existe, por que existe, como validar e, principalmente, o que ainda **não** existe. Consulte também os documentos em `docs/` para auditorias e resultados detalhados de cada fase.
 
@@ -33,7 +33,7 @@ Nunca alterar como consequência deste projeto:
 Identidade Android atual:
 
 - applicationId: `com.loopin.player2`;
-- versão: `2.0.0-phase8.3-presence`;
+- versão: `2.0.0-phase9.0.1-contract-hardening`;
 - versionCode: `1`;
 - minSdk: 21;
 - targetSdk/compileSdk: 36;
@@ -131,7 +131,7 @@ Sincronização remota abstrata e update:
 - contratos e preparação segura de APK;
 - validação de tamanho, SHA-256 e assinatura.
 
-Não existe endpoint real configurado.
+Existe o endpoint autenticado `player-manifest`, mas ele é somente contrato/backend nesta etapa. O `RemoteSyncConfig` do APK continua vazio e o sync/download remoto não está ativado.
 
 ### `core:operations`
 
@@ -370,7 +370,7 @@ PlaylistContent
 
 O construtor antigo `PlaylistItem(id, order, media)` continua disponível para preservar compatibilidade.
 
-O manifesto/cache remoto ainda serializa apenas mídia normal. Serialização transacional de conteúdo dinâmico é trabalho futuro e deve preservar compatibilidade de schema.
+O manifesto schema 2 serializa `MEDIA` e `DYNAMIC/WEATHER`. Somente `MEDIA` gera objeto no cache; WEATHER participa da ordem e da transação ACTIVE/PREVIOUS sem arquivo. Signed URL é proibida no snapshot canônico e será resolvida separadamente na Fase 9.1.
 
 ## 7. Playback e lifecycle
 
@@ -529,7 +529,7 @@ generatedAt
 items[]
 ```
 
-Mídia normal contém id, tipo, URL futura, nome lógico, duração, ordem, tamanho, SHA-256, MIME e metadata.
+No schema 2, mídia normal contém id, ordem, `assetId`, tipo, duração editorial, tamanho, SHA-256 e MIME. URL temporária nunca faz parte do snapshot; o schema 1 histórico mantém seu formato legado.
 
 Fluxo seguro:
 
@@ -905,9 +905,9 @@ Ver `docs/HARDWARE_CONNECTION_TEST.md`.
 
 ## 24. Estado do Admin e backend
 
-> Histórico das etapas iniciais: o Admin antigo foi analisado apenas como referência e continua intocado. O texto abaixo descrevia lacunas anteriores às Fases 8.1–8.3.
+> Histórico das etapas iniciais: o Admin antigo foi analisado apenas como referência e continua intocado. As lacunas abaixo existiam antes das Fases 8.1–9.0.1; o estado operacional atual vem logo depois.
 
-Ainda não há contrato remoto final para:
+Historicamente não havia contrato remoto final para:
 
 - pareamento;
 - manifesto dinâmico;
@@ -928,7 +928,7 @@ Ao integrar futuramente:
 - nunca bloquear startup por falha remota;
 - não alterar tabelas/contratos de produção sem migração e aprovação.
 
-### Estado atual após a Fase 8.3
+### Estado atual após a Fase 9.0.1
 
 - o Player usa o Supabase exclusivo `zdhsfirabkmivuzwyids` somente para pareamento e presença;
 - `device-pairing` aceita `action=heartbeat` com `Authorization: Bearer <device credential>`;
@@ -937,13 +937,18 @@ Ao integrar futuramente:
 - o Admin 2 lê presença das próprias telas por RLS, deriva ONLINE até 12 minutos e atualiza a lista a cada 60 segundos enquanto visível;
 - usuários administrativos não possuem `UPDATE` direto em `devices` e não podem forjar presença;
 - perda de rede não desfaz pairing, não interrompe playback e não abre novo fluxo de pareamento.
+- existe manifesto schema 2 estrito por tela, com snapshots imutáveis, associação segura e entrega autenticada pela credencial permanente;
+- metadados MEDIA são derivados pelo servidor de `player_media_assets`; o Admin não fornece SHA, tamanho, MIME ou tipo como autoridade;
+- relação tela→playlist é one-to-one no Admin 2 e os controles usam delegação, permanecendo funcionais após refresh de presença;
+- `remoteUrl`/signed URL não faz parte do snapshot nem da identidade da versão;
+- o consumo remoto continua deliberadamente desligado no APK.
 
 ## 25. Pendências conhecidas
 
 Prioridade técnica futura, sem autorização implícita para implementar:
 
-1. serializar `DynamicMediaContent` em manifesto versionado;
-2. definir contrato de manifesto remoto por tela;
+1. implementar na Fase 9.1 o cliente autenticado do manifesto sem bloquear startup/playback;
+2. resolver `assetId` em URL temporária fora do snapshot canônico e baixar com validação SHA/tamanho;
 3. escolher API/backend de clima e política de atualização;
 4. fornecer vídeos de background reais e pequenos;
 5. mapear cada background a arquivo validado no cache;
@@ -1066,10 +1071,14 @@ O estado atual possui pareamento e presença conectados ao backend isolado, mas 
 - Não deixar alterações finalizadas somente no ambiente local.
 - Não publicar quando o usuário pedir explicitamente para não enviar, quando a validação necessária falhar ou quando houver risco de incluir segredos ou artefatos indevidos. Nesses casos, informar claramente o bloqueio.
 - O Loopin Admin permanece em repositório separado e só deve ser alterado ou publicado quando isso estiver explicitamente dentro do escopo autorizado.
-# Estado atual — Fase 9 (2026-09-01)
+# Registro da evolução — Fase 9 (2026-09-01)
 
 A Fase 9 substitui como fonte operacional qualquer trecho histórico abaixo que diga que não existe contrato remoto de manifesto/backend. Existe agora um contrato autenticado e versionado por tela, descrito em `docs/PHASE9_VERSIONED_SCREEN_MANIFEST.md`, com schema 2 explícito `MEDIA`/`DYNAMIC`, snapshots imutáveis, RLS, RPCs seguras, associação no Admin 2 e Edge Function `player-manifest`.
 
-Importante: contrato disponível não significa sincronismo ativo. O APK `2.0.0-phase9-manifest` **não busca nem baixa** esse manifesto. `RemoteSyncConfig` continua desabilitado e a integração de rede/cache fica para a Fase 9.1. Schema 1, ACTIVE/PREVIOUS, rollback, playback local e WEATHER aprovado permanecem compatíveis.
+Importante: contrato disponível não significa sincronismo ativo. O APK `2.0.0-phase9.0.1-contract-hardening` **não busca nem baixa** esse manifesto. `RemoteSyncConfig` continua desabilitado e a integração de rede/cache fica para a Fase 9.1. Schema 1, ACTIVE/PREVIOUS, rollback, playback local e WEATHER aprovado permanecem compatíveis.
 
 Regras permanentes mantidas: alterar somente Loopin Player 2.0/Admin 2/Supabase isolado; nunca tocar Admin antigo, Player antigo ou produção; validar tudo; fazer um commit coerente e push automático para `origin/main` após sucesso.
+
+### Hardening 9.0.1
+
+A revisão pós-Fase 9 corrigiu o shape one-to-one da associação no Admin, listeners perdidos após refresh, opção visual de desassociação sem backend, divergências de validação WEATHER, metadados MEDIA fornecidos pelo cliente e inclusão de URL temporária no manifesto canônico. O servidor agora deriva tipo, SHA-256, tamanho e MIME diretamente do asset pertencente ao tenant. O APK permanece sem fetch/download remoto.

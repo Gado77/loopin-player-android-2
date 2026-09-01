@@ -10,7 +10,7 @@ O schema 1 histórico permanece legível e sua serialização não foi alterada.
 
 - raiz: `schemaVersion`, `playlistId`, `playlistVersion`, `generatedAtEpochMs`, `items`;
 - campos desconhecidos, IDs repetidos, ordens repetidas e mistura de campos são rejeitados;
-- `MEDIA`: `mediaType`, `assetId`, tamanho, SHA-256 e MIME obrigatórios; duração para imagem; URL é apenas localização futura e nunca identidade;
+- `MEDIA`: `mediaType`, `assetId`, tamanho, SHA-256 e MIME obrigatórios; duração para imagem; URL não pertence ao snapshot canônico;
 - `DYNAMIC`: somente `WEATHER`, duração positiva e configuração pequena; não aceita asset, hash, tamanho, MIME ou URL.
 
 `assetId` é a identidade lógica estável. O cache imutável continua endereçado pelo SHA-256 do conteúdo. A identidade da versão local é o SHA-256 dos bytes determinísticos do manifesto.
@@ -89,13 +89,13 @@ Todos os usuários, telas, dispositivos, credenciais, playlists e assets do ensa
 
 ## LDPlayer
 
-APK debug `2.0.0-phase9-manifest` instalado com sucesso. O processo iniciou, exibiu o fluxo de pareamento, não produziu crash/ANR e não registrou job de sincronismo de conteúdo. Um reboot completo do LDPlayer foi executado; o aplicativo continuou instalável/inicializável e o pareamento rotativo voltou normalmente. O LDPlayer é validação de integração, não certificação da MXQ.
+APK debug `2.0.0-phase9-manifest` instalado com sucesso na validação original. O hardening posterior atualizou a versão para `2.0.0-phase9.0.1-contract-hardening`. O processo iniciou, exibiu o fluxo de pareamento, não produziu crash/ANR e não registrou job de sincronismo de conteúdo. Um reboot completo do LDPlayer foi executado; o aplicativo continuou instalável/inicializável e o pareamento rotativo voltou normalmente. O LDPlayer é validação de integração, não certificação da MXQ.
 
 ## Custo e limitações
 
 Esta fase adiciona zero polling, zero thread permanente, zero serviço, zero wakelock e zero requisição periódica no APK. O custo existe apenas no Admin sob ação do usuário e na Edge Function quando explicitamente chamada.
 
-Pendências deliberadas para a Fase 9.1: cliente HTTP autenticado do manifesto, URLs assinadas de curta duração, downloads, scheduling remoto, retries, ativação transacional após rede e testes físicos na MXQ.
+Pendências deliberadas para a Fase 9.1: cliente HTTP autenticado do manifesto, resolução separada `assetId → URL temporária`, downloads, scheduling remoto, retries, ativação transacional após rede e testes físicos na MXQ.
 
 ## Arquivos principais
 

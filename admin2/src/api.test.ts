@@ -22,7 +22,7 @@ describe("Admin API", () => {
     await expect(listScreens(client)).resolves.toHaveLength(1);
     expect(select).toHaveBeenCalledWith(expect.stringContaining("last_seen_at"));
     expect(select).toHaveBeenCalledWith(expect.stringContaining("app_version"));
-    expect(select).toHaveBeenCalledWith(expect.stringContaining("screen_playlist_assignments"));
+    expect(select).toHaveBeenCalledWith(expect.stringContaining("playlist_assignment:screen_playlist_assignments"));
   });
 
   it("lista somente versões publicadas visíveis por RLS", async () => {

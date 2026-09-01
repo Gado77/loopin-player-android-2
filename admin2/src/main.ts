@@ -5,6 +5,7 @@ import { parsePairingCode, parsePairingQr } from "./pairing";
 import { PairingScanner } from "./scanner";
 import { classifyPresence, formatLastCommunication, presenceLabel } from "./presence";
 import { DashboardPresenceRefresher } from "./refresh";
+import { bindScreenGridEvents } from "./screen-grid-events";
 import { supabase } from "./supabase";
 import type { PairingProof, PlaylistVersion, Screen } from "./types";
 
@@ -95,13 +96,14 @@ function renderScreenCards() {
     const lastCommunication = device
       ? `<span>Última comunicação: ${escape(formatLastCommunication(device.last_seen_at))}</span>`
       : "";
-    const assigned = screen.screen_playlist_assignments?.[0]?.player_playlist_versions;
-    const options = playlistVersions.map((version) => `<option value="${version.id}" ${assigned?.id === version.id ? "selected" : ""}>${escape(version.player_playlists?.name ?? "Playlist")} · v${version.version_number}</option>`).join("");
+    const assigned = screen.playlist_assignment?.player_playlist_versions;
+    const placeholder = assigned ? "" : `<option value="" selected disabled>${playlistVersions.length ? "Selecione uma versão" : "Nenhuma versão publicada"}</option>`;
+    const options = placeholder + playlistVersions.map((version) => `<option value="${version.id}" ${assigned?.id === version.id ? "selected" : ""}>${escape(version.player_playlists?.name ?? "Playlist")} · v${version.version_number}</option>`).join("");
     return `<article class="screen-card">
       <div><span class="status presence-${presence.toLowerCase()}">${presenceLabel(presence)}</span>
       <h3>${escape(screen.name)}</h3>
       <p class="device-details">${version}${lastCommunication}<span>Vínculo: ${paired ? "PAIRED" : "SEM PLAYER"}</span></p></div>
-      <label class="playlist-assignment">Playlist publicada<select data-screen-id="${screen.id}" class="playlist-select"><option value="">Sem playlist</option>${options}</select></label>
+      <label class="playlist-assignment">Playlist publicada<select data-screen-id="${screen.id}" class="playlist-select" ${playlistVersions.length ? "" : "disabled"}>${options}</select></label>
       <button class="secondary pair-button" data-id="${screen.id}" ${paired ? "disabled" : ""}>
         ${paired ? "Player vinculado" : "Vincular Player"}
       </button>
@@ -124,23 +126,20 @@ function renderDashboard() {
     await logout(supabase);
   });
   document.querySelector("#new-screen")!.addEventListener("click", renderCreateScreen);
-  document.querySelectorAll<HTMLButtonElement>(".pair-button").forEach((button) => {
-    button.addEventListener("click", () => {
-      selectedScreen = screens.find((item) => item.id === button.dataset.id) ?? null;
+  bindScreenGridEvents(document.querySelector<HTMLElement>(".screen-grid")!, {
+    pair: (screenId) => {
+      selectedScreen = screens.find((item) => item.id === screenId) ?? null;
       if (selectedScreen) renderPairingInput();
-    });
-  });
-  document.querySelectorAll<HTMLSelectElement>(".playlist-select").forEach((select) => {
-    select.addEventListener("change", async () => {
-      if (!select.value) return;
+    },
+    assign: async (screenId, versionId, select) => {
       select.disabled = true;
       try {
-        await assignPlaylistVersion(supabase, select.dataset.screenId!, select.value);
+        await assignPlaylistVersion(supabase, screenId, versionId);
         screens = await listScreens(supabase);
         renderDashboard();
         notice("Playlist da tela atualizada.", "success");
       } catch (error) { notice((error as Error).message); select.disabled = false; }
-    });
+    },
   });
 }
 

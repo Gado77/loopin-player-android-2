@@ -13,7 +13,7 @@ export type Screen = {
   status: "ACTIVE" | "DISABLED";
   created_at: string;
   devices?: ScreenDevice[];
-  screen_playlist_assignments?: ScreenPlaylistAssignment[];
+  playlist_assignment?: ScreenPlaylistAssignment | null;
 };
 
 export type PlaylistVersion = {

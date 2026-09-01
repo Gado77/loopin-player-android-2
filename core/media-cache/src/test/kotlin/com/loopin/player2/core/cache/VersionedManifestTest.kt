@@ -31,12 +31,30 @@ class VersionedManifestTest {
         assertFailsWith<IllegalArgumentException> {
             VersionedManifestCodec.decode(valid.replace("\"playlistId\"", "\"unexpected\": true,\n  \"playlistId\""))
         }
+        assertFailsWith<IllegalArgumentException> {
+            VersionedManifestCodec.decode(valid.replace("\"mimeType\": \"video/mp4\"", "\"mimeType\": \"video/mp4\",\n      \"remoteUrl\": \"https://signed.invalid\""))
+        }
     }
 
     @Test fun `duplicate ids and orders are rejected`() {
         val item = mixedManifest().items.first()
         assertFailsWith<IllegalArgumentException> { mixedManifest().copy(items = listOf(item, item.copy(order = 2))).validate() }
         assertFailsWith<IllegalArgumentException> { mixedManifest().copy(items = listOf(item, item.copy(id = "other"))).validate() }
+    }
+
+    @Test fun `empty manifest and invalid weather configuration are rejected`() {
+        assertFailsWith<IllegalArgumentException> { mixedManifest().copy(items = emptyList()).validate() }
+        val weather = mixedManifest().items[1]
+        assertFailsWith<IllegalArgumentException> {
+            mixedManifest().copy(items = listOf(weather.copy(content = DynamicMediaContent(
+                ManifestDynamicType.WEATHER, 20_000, mapOf("city" to "", "lat" to "-7", "lon" to "-41"),
+            )))).validate()
+        }
+        assertFailsWith<IllegalArgumentException> {
+            mixedManifest().copy(items = listOf(weather.copy(content = DynamicMediaContent(
+                ManifestDynamicType.WEATHER, 20_000, mapOf("city" to "Cidade", "lat" to "91", "lon" to "-41"),
+            )))).validate()
+        }
     }
 
     @Test fun `dynamic weather creates no cache object and remains ordered in playback`() {
@@ -74,7 +92,7 @@ class VersionedManifestTest {
 
     private fun mixedManifest() = VersionedManifest(2, "playlist", 9, 123, listOf(
         NormalizedManifestItem("media", 0, NormalMediaContent(MediaType.VIDEO, "asset-1", null,
-            mediaBytes.size.toLong(), hash(mediaBytes), "video/mp4", "https://example.invalid/signed")),
+            mediaBytes.size.toLong(), hash(mediaBytes), "video/mp4")),
         NormalizedManifestItem("weather", 1, DynamicMediaContent(ManifestDynamicType.WEATHER, 20_000,
             mapOf("city" to "São José do Piauí", "lat" to "-7.08", "lon" to "-41.47"))),
     ))

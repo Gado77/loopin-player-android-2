@@ -6,7 +6,6 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -28,7 +27,6 @@ data class MediaManifest(
         require(playlistId.isNotBlank()) { "playlistId is required" }
         require(playlistVersion >= 0) { "playlistVersion cannot be negative" }
         require(generatedAtEpochMs >= 0) { "generatedAtEpochMs cannot be negative" }
-        require(items.isNotEmpty()) { "items are required" }
         require(items.map(ManifestItem::id).distinct().size == items.size) { "Media ids must be unique" }
         require(items.map(ManifestItem::order).distinct().size == items.size) { "Media order must be unique" }
         items.forEach(ManifestItem::validate)
@@ -87,7 +85,6 @@ data class NormalMediaContent(
     val expectedSizeBytes: Long,
     val sha256: String,
     val mimeType: String,
-    val remoteUrl: String? = null,
 ) : NormalizedManifestContent
 
 data class DynamicMediaContent(
@@ -114,6 +111,7 @@ data class VersionedManifest(
         require(playlistId.isNotBlank()) { "playlistId is required" }
         require(playlistVersion >= 0) { "playlistVersion cannot be negative" }
         require(generatedAtEpochMs >= 0) { "generatedAtEpochMs cannot be negative" }
+        require(items.isNotEmpty()) { "items are required" }
         require(items.map { it.id }.distinct().size == items.size) { "Item ids must be unique" }
         require(items.map { it.order }.distinct().size == items.size) { "Item order must be unique" }
         items.forEach { item ->
@@ -128,7 +126,6 @@ data class VersionedManifest(
                     require(content.mimeType.startsWith(if (content.mediaType == MediaType.VIDEO) "video/" else "image/")) {
                         "mimeType does not match mediaType"
                     }
-                    require(content.remoteUrl == null || content.remoteUrl.startsWith("https://")) { "remoteUrl must use HTTPS" }
                     require(content.mediaType != MediaType.IMAGE || content.durationMs != null && content.durationMs > 0) {
                         "Images require a positive duration"
                     }
@@ -154,7 +151,7 @@ object VersionedManifestCodec {
     private val rootKeys = setOf("schemaVersion", "playlistId", "playlistVersion", "generatedAtEpochMs", "items")
     private val commonItemKeys = setOf("id", "order", "kind")
     private val mediaKeys = commonItemKeys + setOf(
-        "mediaType", "assetId", "durationMs", "expectedSizeBytes", "sha256", "mimeType", "remoteUrl",
+        "mediaType", "assetId", "durationMs", "expectedSizeBytes", "sha256", "mimeType",
     )
     private val dynamicKeys = commonItemKeys + setOf("dynamicType", "durationMs", "configuration")
 
@@ -180,7 +177,7 @@ object VersionedManifestCodec {
                     "\"kind\": \"MEDIA\"", "\"mediaType\": \"${value.mediaType}\"",
                     "\"assetId\": ${quote(value.assetId)}", value.durationMs?.let { "\"durationMs\": $it" },
                     "\"expectedSizeBytes\": ${value.expectedSizeBytes}", "\"sha256\": ${quote(value.sha256.lowercase())}",
-                    "\"mimeType\": ${quote(value.mimeType)}", value.remoteUrl?.let { "\"remoteUrl\": ${quote(it)}" },
+                    "\"mimeType\": ${quote(value.mimeType)}",
                 )
                 is DynamicMediaContent -> listOf(
                     "\"kind\": \"DYNAMIC\"", "\"dynamicType\": \"${value.dynamicType}\"",
@@ -204,7 +201,6 @@ object VersionedManifestCodec {
                 expectedSizeBytes = value.requiredLong("expectedSizeBytes"),
                 sha256 = value.requiredString("sha256"),
                 mimeType = value.requiredString("mimeType"),
-                remoteUrl = value.optionalString("remoteUrl"),
             )
             ManifestContentKind.DYNAMIC -> DynamicMediaContent(
                 dynamicType = enumValueOf(value.requiredString("dynamicType")),
@@ -222,6 +218,5 @@ object VersionedManifestCodec {
     private fun JsonObject.requiredString(name: String) = required(name).jsonPrimitive.content
     private fun JsonObject.requiredLong(name: String) = required(name).jsonPrimitive.longOrNull ?: error("$name must be an integer")
     private fun JsonObject.optionalLong(name: String) = this[name]?.jsonPrimitive?.longOrNull
-    private fun JsonObject.optionalString(name: String) = this[name]?.jsonPrimitive?.contentOrNull
     private fun quote(value: String) = JsonPrimitive(value).toString()
 }

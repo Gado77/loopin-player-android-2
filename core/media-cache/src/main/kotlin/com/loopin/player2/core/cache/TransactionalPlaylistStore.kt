@@ -505,7 +505,7 @@ class TransactionalPlaylistStore(
                     val objectFile = File(objectsDirectory, objectId(content))
                     PlaylistItem(item.id, item.order, PlayableMedia(
                         id = item.id, type = content.mediaType,
-                        reference = MediaReference(objectFile.toURI().toString(), content.remoteUrl),
+                        reference = MediaReference(objectFile.toURI().toString()),
                         durationMs = content.durationMs, checksum = content.sha256,
                         sizeBytes = content.expectedSizeBytes,
                         metadata = mapOf(SafeMediaCache.LOCAL_FILE_METADATA to objectId(content), "immutableObject" to "true", SafeMediaCache.MIME_TYPE_METADATA to content.mimeType),
@@ -538,7 +538,7 @@ class TransactionalPlaylistStore(
             legacy.playlistId, legacy.playlistVersion, legacy.generatedAtEpochMs,
             legacy.items.map { item -> NormalizedManifestItem(item.id, item.order, NormalMediaContent(
                 item.type, item.id, item.durationMs, item.expectedSizeBytes!!, item.sha256!!,
-                item.mimeType ?: "application/octet-stream", item.remoteUrl,
+                item.mimeType ?: "application/octet-stream",
             )) }, bytes,
         )
     }
