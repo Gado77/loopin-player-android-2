@@ -241,6 +241,7 @@ class MainActivity : Activity() {
                 pairingQrView.visibility = View.GONE
                 pairingHintView.text = getString(R.string.pairing_complete)
                 identityPanel.visibility = View.GONE
+                container.heartbeatScheduler.schedule()
                 startPlayback()
             } },
         ).also(PairingCoordinator::start)

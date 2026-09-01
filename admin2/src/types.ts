@@ -1,13 +1,18 @@
+export type ScreenDevice = {
+  id: string;
+  pairing_status: "UNPAIRED" | "PAIRED" | "DISABLED";
+  last_seen_at: string | null;
+  app_version: string | null;
+  metadata?: Record<string, unknown> | null;
+};
+
 export type Screen = {
   id: string;
   owner_id: string;
   name: string;
   status: "ACTIVE" | "DISABLED";
   created_at: string;
-  devices?: Array<{
-    id: string;
-    pairing_status: "UNPAIRED" | "PAIRED" | "DISABLED";
-  }>;
+  devices?: ScreenDevice[];
 };
 
 export type PairingProof =

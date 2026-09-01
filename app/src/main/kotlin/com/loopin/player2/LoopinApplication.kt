@@ -43,6 +43,9 @@ class LoopinApplication : Application(), Application.ActivityLifecycleCallbacks 
                 lastReportedNetwork = state.networkAvailable
                 container.logger.log(LogLevel.INFO, TAG, if (state.networkAvailable)
                     OperationalLogEvent.DEVICE_ONLINE else OperationalLogEvent.DEVICE_OFFLINE)
+                if (state.networkAvailable && container.pairingManager.snapshot().state == PairingState.PAIRED) {
+                    container.heartbeatScheduler.schedule()
+                }
             }
         }
         container.syncScheduler?.schedule()
@@ -97,6 +100,8 @@ data class AppContainer(
     val pairingManager: DevicePairingManager,
     val healthManager: DeviceHealthManager,
     val heartbeatSource: HeartbeatSource,
+    val heartbeatDispatcher: DeviceHeartbeatDispatcher,
+    val heartbeatScheduler: DeviceHeartbeatScheduler,
     val commandExecutor: CommandExecutor,
     val updateManager: OperationalUpdateManager,
     val operationalState: OperationalStateRegistry,
@@ -126,6 +131,16 @@ data class AppContainer(
             val syncScheduler = if (syncManager != null) ContentSyncScheduler(application, syncConfig, logger) else null
             val pairing = DevicePairingManager(AndroidPairingStore(application))
             val health = DeviceHealthManager(AndroidDeviceHealthCollector(application, config.identity, stateManager, operationalState, transactionalStore))
+            val heartbeatSource = LocalHeartbeatSource(health)
+            val credentialStore = DeviceCredentialStore(application)
+            val heartbeatScheduler = DeviceHeartbeatScheduler(application, logger)
+            val heartbeatDispatcher = DeviceHeartbeatDispatcher(
+                endpoint = BuildConfig.PAIRING_ENDPOINT,
+                pairingState = { pairing.snapshot().state },
+                credential = credentialStore::credential,
+                heartbeatSource = heartbeatSource,
+                transport = DeviceHeartbeatHttpApi(),
+            )
             return AppContainer(
                 config = config,
                 logger = logger,
@@ -138,7 +153,9 @@ data class AppContainer(
                 syncScheduler = syncScheduler,
                 pairingManager = pairing,
                 healthManager = health,
-                heartbeatSource = LocalHeartbeatSource(health),
+                heartbeatSource = heartbeatSource,
+                heartbeatDispatcher = heartbeatDispatcher,
+                heartbeatScheduler = heartbeatScheduler,
                 commandExecutor = DeferredCommandExecutor(),
                 updateManager = OperationalUpdateManager(AndroidUpdateSettingsStore(application), BuildConfig.VERSION_NAME),
                 operationalState = operationalState,

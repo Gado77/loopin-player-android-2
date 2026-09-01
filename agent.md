@@ -1,6 +1,6 @@
 # Loopin Player 2.0 — Documento mestre da reconstrução
 
-> Última atualização: 19/08/2026 — estado concluído até a Fase 7.4.
+> Última atualização: 01/09/2026 — estado concluído até a Fase 8.3.
 >
 > Este arquivo é o ponto de entrada para qualquer pessoa ou agente que continue o trabalho. Ele descreve o que existe, por que existe, como validar e, principalmente, o que ainda **não** existe. Consulte também os documentos em `docs/` para auditorias e resultados detalhados de cada fase.
 
@@ -33,7 +33,7 @@ Nunca alterar como consequência deste projeto:
 Identidade Android atual:
 
 - applicationId: `com.loopin.player2`;
-- versão: `2.0.0-phase7.4`;
+- versão: `2.0.0-phase8.3-presence`;
 - versionCode: `1`;
 - minSdk: 21;
 - targetSdk/compileSdk: 36;
@@ -628,7 +628,7 @@ Campos preparados:
 - playlist;
 - configurações do dispositivo.
 
-Não há backend. O código de seis dígitos não garante unicidade.
+> Histórico até a Fase 5: naquele momento ainda não havia backend. Desde a Fase 8.1 existe pareamento seguro no Supabase isolado do Player 2.0; o código amigável local continua sem ser identidade ou credencial.
 
 Health sob demanda:
 
@@ -643,7 +643,7 @@ Health sob demanda:
 - último sync;
 - último erro.
 
-Heartbeat é somente contrato/local. Não envia nada.
+Desde a Fase 8.3, o heartbeat local é enviado por HTTPS somente quando o Player está `PAIRED`, autenticado pela credencial permanente já criada no pareamento. O transporte é secundário ao playback, usa `JobScheduler` one-shot, intervalo normal de cinco minutos e backoff limitado.
 
 Comandos reservados, mas não executados remotamente:
 
@@ -668,6 +668,7 @@ Principais áreas:
 - `loopin_operational_state`: último sync/erro;
 - `loopin_remote_sync`: URL e intervalo;
 - `loopin_sync_schedule_state`: falhas consecutivas;
+- `loopin_heartbeat_schedule_state`: falhas consecutivas do heartbeat;
 - `loopin_weather_cache`: último clima válido;
 - `files/transactional-media`: objetos, staging, versões e ponteiros;
 - `files/diagnostics`: logs limitados.
@@ -904,15 +905,14 @@ Ver `docs/HARDWARE_CONNECTION_TEST.md`.
 
 ## 24. Estado do Admin e backend
 
-O Admin foi analisado apenas como referência nas etapas iniciais. Nenhuma alteração foi feita. O Player 2.0 não está conectado ao Admin ou Supabase.
+> Histórico das etapas iniciais: o Admin antigo foi analisado apenas como referência e continua intocado. O texto abaixo descrevia lacunas anteriores às Fases 8.1–8.3.
 
-Não há ainda contrato remoto final para:
+Ainda não há contrato remoto final para:
 
 - pareamento;
 - manifesto dinâmico;
 - cidade;
 - layouts;
-- heartbeat;
 - comandos;
 - update;
 - autenticação/autorização.
@@ -928,12 +928,22 @@ Ao integrar futuramente:
 - nunca bloquear startup por falha remota;
 - não alterar tabelas/contratos de produção sem migração e aprovação.
 
+### Estado atual após a Fase 8.3
+
+- o Player usa o Supabase exclusivo `zdhsfirabkmivuzwyids` somente para pareamento e presença;
+- `device-pairing` aceita `action=heartbeat` com `Authorization: Bearer <device credential>`;
+- o servidor calcula SHA-256 somente para localizar a credencial ativa e define `last_seen_at` autoritativamente;
+- `app_version` e seis campos operacionais limitados são persistidos em `devices`;
+- o Admin 2 lê presença das próprias telas por RLS, deriva ONLINE até 12 minutos e atualiza a lista a cada 60 segundos enquanto visível;
+- usuários administrativos não possuem `UPDATE` direto em `devices` e não podem forjar presença;
+- perda de rede não desfaz pairing, não interrompe playback e não abre novo fluxo de pareamento.
+
 ## 25. Pendências conhecidas
 
 Prioridade técnica futura, sem autorização implícita para implementar:
 
 1. serializar `DynamicMediaContent` em manifesto versionado;
-2. definir contrato backend de pairing;
+2. definir contrato de manifesto remoto por tela;
 3. escolher API/backend de clima e política de atualização;
 4. fornecer vídeos de background reais e pequenos;
 5. mapear cada background a arquivo validado no cache;
@@ -1021,6 +1031,7 @@ Ao concluir:
 - `docs/PHASE8_BACKEND_READINESS_AUDIT.md`: auditoria dos contratos reais do Admin, lacunas de segurança e bloqueios para integração operacional.
 - `docs/PHASE8_1_SECURE_PAIRING.md`: contrato e implementação implantada do pareamento rotativo por código/QR.
 - `docs/PHASE8_2_MINIMAL_ADMIN_PAIRING.md`: Admin 2.0 mínimo, autenticação, telas e validação real do pareamento no LDPlayer.
+- `docs/PHASE8_3_DEVICE_PRESENCE.md`: heartbeat autenticado, presença no Admin, segurança, backoff e validações.
 
 ## 29. Fonte de verdade
 
@@ -1032,7 +1043,7 @@ Quando houver divergência:
 4. README e documentos históricos não devem ser usados para negar funcionalidades adicionadas depois;
 5. requisitos explícitos novos do usuário prevalecem, desde que não autorizem implicitamente alteração de produção ou ação destrutiva.
 
-O estado atual é uma base local sólida e demonstrável, mas ainda não é um produto conectado ao backend nem certificado no hardware MXQ.
+O estado atual possui pareamento e presença conectados ao backend isolado, mas playlist, comandos, update e clima remoto continuam adiados; o produto ainda não é certificado no hardware MXQ.
 
 ### Backend isolado do Player 2.0
 
@@ -1045,6 +1056,8 @@ O estado atual é uma base local sólida e demonstrável, mas ainda não é um p
 - Em 26/08/2026, o vínculo real por código foi aprovado no LDPlayer e permaneceu `PAIRED` após force-stop, reboot e inicialização offline.
 - Código inválido, anônimo, tela de outro usuário, replay, já pareado e expirado foram rejeitados com os status esperados.
 - Confirmação remota por token QR foi aprovada; a captura óptica pela câmera permanece pendente por ausência de câmera apontável para o QR do próprio emulador.
+- Em 01/09/2026, a Fase 8.3 implantou heartbeat autenticado, presença derivada no Admin 2, intervalo normal de cinco minutos, tolerância online de 12 minutos e bloqueio de escrita administrativa direta em `devices`.
+- Supabase e LDPlayer validaram ONLINE → OFFLINE → ONLINE, force-stop, reabertura e reboot sem perda do pairing; 177 testes Android/JVM e 29 testes Admin passaram.
 - Usuários, telas e dispositivos de laboratório foram removidos após a validação; não manter credenciais E2E conhecidas no projeto.
 
 ## 30. Publicação automática no GitHub

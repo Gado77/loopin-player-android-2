@@ -16,7 +16,7 @@ export async function logout(client: SupabaseClient) {
 export async function listScreens(client: SupabaseClient): Promise<Screen[]> {
   const { data, error } = await client
     .from("screens")
-    .select("id, owner_id, name, status, created_at, devices(id, pairing_status)")
+    .select("id, owner_id, name, status, created_at, devices(id, pairing_status, last_seen_at, app_version, metadata)")
     .order("created_at", { ascending: false });
   if (error) throw new Error("Não foi possível carregar suas telas.");
   return (data ?? []) as Screen[];

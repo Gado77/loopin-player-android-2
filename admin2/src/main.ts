@@ -3,6 +3,8 @@ import type { Session } from "@supabase/supabase-js";
 import { createScreen, listScreens, login, logout, pairPlayer } from "./api";
 import { parsePairingCode, parsePairingQr } from "./pairing";
 import { PairingScanner } from "./scanner";
+import { classifyPresence, formatLastCommunication, presenceLabel } from "./presence";
+import { DashboardPresenceRefresher } from "./refresh";
 import { supabase } from "./supabase";
 import type { PairingProof, Screen } from "./types";
 
@@ -12,6 +14,10 @@ let session: Session | null = null;
 let screens: Screen[] = [];
 let selectedScreen: Screen | null = null;
 let proof: PairingProof | null = null;
+const presenceRefresh = new DashboardPresenceRefresher(
+  refreshDashboardData,
+  () => document.visibilityState === "visible",
+);
 
 function escape(value: string) {
   return value.replace(/[&<>'"]/g, (character) => ({
@@ -28,6 +34,7 @@ function notice(message: string, kind: "error" | "success" = "error") {
 
 function renderLogin() {
   scanner.stop();
+  presenceRefresh.stop();
   root.innerHTML = `
     <main class="auth-shell">
       <section class="auth-card">
@@ -66,21 +73,41 @@ async function loadDashboard() {
     renderDashboard();
     notice((error as Error).message);
   }
+  presenceRefresh.start();
 }
 
-function renderDashboard() {
-  scanner.stop();
-  const cards = screens.map((screen) => {
-    const device = screen.devices?.[0];
+async function refreshDashboardData() {
+  if (!session) return;
+  screens = await listScreens(supabase);
+  const grid = document.querySelector<HTMLElement>(".screen-grid");
+  if (grid) grid.innerHTML = renderScreenCards();
+}
+
+function renderScreenCards() {
+  return screens.map((screen) => {
+    const device = screen.devices?.find((item) => item.pairing_status === "PAIRED") ?? screen.devices?.[0];
     const paired = device?.pairing_status === "PAIRED";
+    const presence = classifyPresence(device);
+    const version = device?.app_version
+      ? `<span>Player ${escape(device.app_version)}</span>`
+      : "";
+    const lastCommunication = device
+      ? `<span>Última comunicação: ${escape(formatLastCommunication(device.last_seen_at))}</span>`
+      : "";
     return `<article class="screen-card">
-      <div><span class="status ${paired ? "paired" : "unpaired"}">${paired ? "PAIRED" : "SEM PLAYER"}</span>
-      <h3>${escape(screen.name)}</h3><p>${escape(screen.status)}</p></div>
+      <div><span class="status presence-${presence.toLowerCase()}">${presenceLabel(presence)}</span>
+      <h3>${escape(screen.name)}</h3>
+      <p class="device-details">${version}${lastCommunication}<span>Vínculo: ${paired ? "PAIRED" : "SEM PLAYER"}</span></p></div>
       <button class="secondary pair-button" data-id="${screen.id}" ${paired ? "disabled" : ""}>
         ${paired ? "Player vinculado" : "Vincular Player"}
       </button>
     </article>`;
   }).join("") || `<div class="empty">Você ainda não criou nenhuma tela.</div>`;
+}
+
+function renderDashboard() {
+  scanner.stop();
+  const cards = renderScreenCards();
 
   root.innerHTML = `<header><div class="brand">LOOPIN <small>ADMIN 2.0</small></div>
     <button id="logout" class="text-button">Sair</button></header>
@@ -88,7 +115,10 @@ function renderDashboard() {
     <button id="new-screen">Nova tela</button></div><div id="notice" class="notice" aria-live="polite"></div>
     <section class="screen-grid">${cards}</section></main><div id="modal-root"></div>`;
 
-  document.querySelector("#logout")!.addEventListener("click", async () => { await logout(supabase); });
+  document.querySelector("#logout")!.addEventListener("click", async () => {
+    presenceRefresh.stop();
+    await logout(supabase);
+  });
   document.querySelector("#new-screen")!.addEventListener("click", renderCreateScreen);
   document.querySelectorAll<HTMLButtonElement>(".pair-button").forEach((button) => {
     button.addEventListener("click", () => {

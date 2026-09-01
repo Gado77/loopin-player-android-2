@@ -13,7 +13,7 @@ android {
         minSdk = 21
         targetSdk = 36
         versionCode = 1
-        versionName = "2.0.0-phase8-pairing"
+        versionName = "2.0.0-phase8.3-presence"
         buildConfigField("String", "PAIRING_ENDPOINT", "\"https://zdhsfirabkmivuzwyids.supabase.co/functions/v1/device-pairing\"")
     }
 

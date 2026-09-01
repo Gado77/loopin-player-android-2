@@ -17,8 +17,11 @@ describe("Admin API", () => {
 
   it("lista telas respeitando consulta autenticada", async () => {
     const order = vi.fn().mockResolvedValue({ data: [{ id: "s1", name: "Loja" }], error: null });
-    const client = { from: vi.fn(() => ({ select: vi.fn(() => ({ order })) })) } as unknown as SupabaseClient;
+    const select = vi.fn(() => ({ order }));
+    const client = { from: vi.fn(() => ({ select })) } as unknown as SupabaseClient;
     await expect(listScreens(client)).resolves.toHaveLength(1);
+    expect(select).toHaveBeenCalledWith(expect.stringContaining("last_seen_at"));
+    expect(select).toHaveBeenCalledWith(expect.stringContaining("app_version"));
   });
 
   it("cria tela para o usuário autenticado", async () => {

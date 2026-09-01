@@ -27,7 +27,11 @@ header { height: 68px; display: flex; align-items: center; justify-content: spac
 .screen-card h3 { margin: 9px 0 4px; }
 .screen-card p { margin: 0; font-size: .8rem; }
 .status { display: inline-block; border-radius: 20px; padding: 4px 8px; font-size: .7rem; font-weight: 800; letter-spacing: .08em; }
-.paired { color: #75f2b2; background: #0e3a2a; }.unpaired { color: #ffc676; background: #3a2a12; }
+.presence-online { color: #75f2b2; background: #0e3a2a; }
+.presence-offline { color: #ffabb3; background: #431c27; }
+.presence-awaiting { color: #ffc676; background: #3a2a12; }
+.presence-no_player { color: #a9c2df; background: #182b42; }
+.device-details { display: flex; flex-wrap: wrap; gap: 5px 14px; }
 .empty { padding: 44px; text-align: center; color: #7890aa; border: 1px dashed #29415f; border-radius: 14px; }
 .notice { display: none; margin-top: 14px; border-radius: 9px; padding: 11px 13px; }
 .notice.error { display: block; color: #ffb7bc; background: #451d27; }.notice.success { display: block; color: #9af0c3; background: #123b2b; }

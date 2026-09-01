@@ -45,6 +45,8 @@ class DeviceCredentialStore(context: Context) {
     }
 
     fun deviceId(): String? = preferences.getString("device_id", null)
+
+    fun credential(): String? = preferences.getString("secret", null)?.takeIf { it.length in 40..128 }
 }
 
 private data class PairingSession(val token: String, val code: String, val qrPayload: String)

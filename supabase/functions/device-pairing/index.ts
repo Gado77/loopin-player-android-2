@@ -65,6 +65,23 @@ function bearer(req: Request): string | null {
   return req.headers.get("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1] ?? null;
 }
 
+function heartbeatMetadata(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const source = value as Record<string, unknown>;
+  const result: Record<string, unknown> = {};
+  for (const key of ["connection", "playback_state", "cache_state", "health_state"] as const) {
+    if (typeof source[key] === "string" && source[key].length <= 32) result[key] = source[key];
+  }
+  if (typeof source.free_storage_bytes === "number" && Number.isSafeInteger(source.free_storage_bytes) && source.free_storage_bytes >= 0) {
+    result.free_storage_bytes = source.free_storage_bytes;
+  }
+  if (source.last_sync_epoch_ms === null) result.last_sync_epoch_ms = null;
+  else if (typeof source.last_sync_epoch_ms === "number" && Number.isSafeInteger(source.last_sync_epoch_ms) && source.last_sync_epoch_ms >= 0) {
+    result.last_sync_epoch_ms = source.last_sync_epoch_ms;
+  }
+  return result;
+}
+
 async function authenticatedUser(req: Request) {
   const token = bearer(req);
   if (!token) return null;
@@ -250,9 +267,8 @@ async function heartbeat(req: Request, body: Record<string, unknown>): Promise<R
   const now = new Date().toISOString();
   const update: Record<string, unknown> = { last_seen_at: now, updated_at: now };
   if (typeof body.app_version === "string") update.app_version = body.app_version.slice(0, 100);
-  if (body.metadata && typeof body.metadata === "object" && !Array.isArray(body.metadata)) {
-    update.metadata = body.metadata;
-  }
+  const metadata = heartbeatMetadata(body.metadata);
+  if (metadata) update.metadata = metadata;
   const { error: updateError } = await service.from("devices").update(update).eq("id", stored.device_id);
   if (updateError) return json(500, { error: "heartbeat_failed" });
   return json(200, { ok: true, server_time: now });
