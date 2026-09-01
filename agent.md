@@ -1066,3 +1066,10 @@ O estado atual possui pareamento e presença conectados ao backend isolado, mas 
 - Não deixar alterações finalizadas somente no ambiente local.
 - Não publicar quando o usuário pedir explicitamente para não enviar, quando a validação necessária falhar ou quando houver risco de incluir segredos ou artefatos indevidos. Nesses casos, informar claramente o bloqueio.
 - O Loopin Admin permanece em repositório separado e só deve ser alterado ou publicado quando isso estiver explicitamente dentro do escopo autorizado.
+# Estado atual — Fase 9 (2026-09-01)
+
+A Fase 9 substitui como fonte operacional qualquer trecho histórico abaixo que diga que não existe contrato remoto de manifesto/backend. Existe agora um contrato autenticado e versionado por tela, descrito em `docs/PHASE9_VERSIONED_SCREEN_MANIFEST.md`, com schema 2 explícito `MEDIA`/`DYNAMIC`, snapshots imutáveis, RLS, RPCs seguras, associação no Admin 2 e Edge Function `player-manifest`.
+
+Importante: contrato disponível não significa sincronismo ativo. O APK `2.0.0-phase9-manifest` **não busca nem baixa** esse manifesto. `RemoteSyncConfig` continua desabilitado e a integração de rede/cache fica para a Fase 9.1. Schema 1, ACTIVE/PREVIOUS, rollback, playback local e WEATHER aprovado permanecem compatíveis.
+
+Regras permanentes mantidas: alterar somente Loopin Player 2.0/Admin 2/Supabase isolado; nunca tocar Admin antigo, Player antigo ou produção; validar tudo; fazer um commit coerente e push automático para `origin/main` após sucesso.

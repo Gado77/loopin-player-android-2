@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { createScreen, listScreens, login, pairPlayer } from "./api";
+import { assignPlaylistVersion, createScreen, listPublishedPlaylistVersions, listScreens, login, pairPlayer } from "./api";
 
 describe("Admin API", () => {
   it("faz login por email e senha", async () => {
@@ -22,6 +22,24 @@ describe("Admin API", () => {
     await expect(listScreens(client)).resolves.toHaveLength(1);
     expect(select).toHaveBeenCalledWith(expect.stringContaining("last_seen_at"));
     expect(select).toHaveBeenCalledWith(expect.stringContaining("app_version"));
+    expect(select).toHaveBeenCalledWith(expect.stringContaining("screen_playlist_assignments"));
+  });
+
+  it("lista somente versões publicadas visíveis por RLS", async () => {
+    const order = vi.fn().mockResolvedValue({ data: [{ id: "v1", version_number: 1 }], error: null });
+    const select = vi.fn(() => ({ order }));
+    const client = { from: vi.fn(() => ({ select })) } as unknown as SupabaseClient;
+    await expect(listPublishedPlaylistVersions(client)).resolves.toHaveLength(1);
+    expect(client.from).toHaveBeenCalledWith("player_playlist_versions");
+  });
+
+  it("altera associação por RPC sem escrita direta", async () => {
+    const rpc = vi.fn().mockResolvedValue({ data: { screen_id: "s1" }, error: null });
+    const client = { rpc } as unknown as SupabaseClient;
+    await assignPlaylistVersion(client, "s1", "v1");
+    expect(rpc).toHaveBeenCalledWith("assign_player_playlist_version", {
+      p_screen_id: "s1", p_playlist_version_id: "v1",
+    });
   });
 
   it("cria tela para o usuário autenticado", async () => {

@@ -13,8 +13,9 @@ android {
         minSdk = 21
         targetSdk = 36
         versionCode = 1
-        versionName = "2.0.0-phase8.3-presence"
+        versionName = "2.0.0-phase9-manifest"
         buildConfigField("String", "PAIRING_ENDPOINT", "\"https://zdhsfirabkmivuzwyids.supabase.co/functions/v1/device-pairing\"")
+        buildConfigField("String", "MANIFEST_ENDPOINT", "\"https://zdhsfirabkmivuzwyids.supabase.co/functions/v1/player-manifest\"")
     }
 
     buildTypes {

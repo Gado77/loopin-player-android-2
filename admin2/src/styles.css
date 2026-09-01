@@ -32,6 +32,8 @@ header { height: 68px; display: flex; align-items: center; justify-content: spac
 .presence-awaiting { color: #ffc676; background: #3a2a12; }
 .presence-no_player { color: #a9c2df; background: #182b42; }
 .device-details { display: flex; flex-wrap: wrap; gap: 5px 14px; }
+.playlist-assignment { display: grid; gap: .35rem; margin: 1rem 0; font-size: .78rem; color: #667085; }
+.playlist-assignment select { min-width: 13rem; }
 .empty { padding: 44px; text-align: center; color: #7890aa; border: 1px dashed #29415f; border-radius: 14px; }
 .notice { display: none; margin-top: 14px; border-radius: 9px; padding: 11px 13px; }
 .notice.error { display: block; color: #ffb7bc; background: #451d27; }.notice.success { display: block; color: #9af0c3; background: #123b2b; }

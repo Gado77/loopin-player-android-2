@@ -4,3 +4,6 @@ project_id = "loopin-player-2"
 verify_jwt = false
 entrypoint = "./functions/device-pairing/index.ts"
 
+[functions.player-manifest]
+verify_jwt = false
+entrypoint = "./functions/player-manifest/index.ts"

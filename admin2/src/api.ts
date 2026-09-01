@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { PairingProof, PairingResult, Screen } from "./types";
+import type { PairingProof, PairingResult, PlaylistVersion, Screen } from "./types";
 import { pairingErrorMessage } from "./pairing";
 
 export async function login(client: SupabaseClient, email: string, password: string) {
@@ -16,10 +16,26 @@ export async function logout(client: SupabaseClient) {
 export async function listScreens(client: SupabaseClient): Promise<Screen[]> {
   const { data, error } = await client
     .from("screens")
-    .select("id, owner_id, name, status, created_at, devices(id, pairing_status, last_seen_at, app_version, metadata)")
+    .select("id, owner_id, name, status, created_at, devices(id, pairing_status, last_seen_at, app_version, metadata), screen_playlist_assignments(playlist_version_id, assigned_at, player_playlist_versions(id, playlist_id, version_number, manifest_sha256, published_at, player_playlists(id, name)))")
     .order("created_at", { ascending: false });
   if (error) throw new Error("Não foi possível carregar suas telas.");
-  return (data ?? []) as Screen[];
+  return (data ?? []) as unknown as Screen[];
+}
+
+export async function listPublishedPlaylistVersions(client: SupabaseClient): Promise<PlaylistVersion[]> {
+  const { data, error } = await client.from("player_playlist_versions")
+    .select("id, playlist_id, version_number, manifest_sha256, published_at, player_playlists(id, name)")
+    .order("published_at", { ascending: false });
+  if (error) throw new Error("Não foi possível carregar as playlists publicadas.");
+  return (data ?? []) as unknown as PlaylistVersion[];
+}
+
+export async function assignPlaylistVersion(client: SupabaseClient, screenId: string, versionId: string) {
+  const { data, error } = await client.rpc("assign_player_playlist_version", {
+    p_screen_id: screenId, p_playlist_version_id: versionId,
+  });
+  if (error) throw new Error("Não foi possível alterar a playlist desta tela.");
+  return data;
 }
 
 export async function createScreen(client: SupabaseClient, ownerId: string, name: string): Promise<Screen> {

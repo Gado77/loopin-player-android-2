@@ -13,6 +13,22 @@ export type Screen = {
   status: "ACTIVE" | "DISABLED";
   created_at: string;
   devices?: ScreenDevice[];
+  screen_playlist_assignments?: ScreenPlaylistAssignment[];
+};
+
+export type PlaylistVersion = {
+  id: string;
+  playlist_id: string;
+  version_number: number;
+  manifest_sha256: string;
+  published_at: string;
+  player_playlists?: { id: string; name: string } | null;
+};
+
+export type ScreenPlaylistAssignment = {
+  playlist_version_id: string;
+  assigned_at: string;
+  player_playlist_versions?: PlaylistVersion | null;
 };
 
 export type PairingProof =
