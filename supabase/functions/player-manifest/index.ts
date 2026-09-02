@@ -36,7 +36,8 @@ Deno.serve(async (request) => {
       return reply(409, { error: "invalid_manifest_snapshot" });
     }
     const etag = `"${versionRow.manifest_sha256}"`;
-    if (request.headers.get("If-None-Match") === etag) {
+    const ifNoneMatch = request.headers.get("If-None-Match")?.trim().replace(/^W\//, "");
+    if (ifNoneMatch === etag) {
       return new Response(null, { status: 304, headers: { ETag: etag, "X-Loopin-Playlist-Version": String(versionRow.version_number) } });
     }
     return reply(200, versionRow.manifest, {

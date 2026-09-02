@@ -1,6 +1,6 @@
 # Loopin Player 2.0 — Documento mestre da reconstrução
 
-> Última atualização: 01/09/2026 — estado concluído até a Fase 9.0.1.
+> Última atualização: 01/09/2026 — estado implementado até a Fase 9.1.
 >
 > Este arquivo é o ponto de entrada para qualquer pessoa ou agente que continue o trabalho. Ele descreve o que existe, por que existe, como validar e, principalmente, o que ainda **não** existe. Consulte também os documentos em `docs/` para auditorias e resultados detalhados de cada fase.
 
@@ -33,7 +33,7 @@ Nunca alterar como consequência deste projeto:
 Identidade Android atual:
 
 - applicationId: `com.loopin.player2`;
-- versão: `2.0.0-phase9.0.1-contract-hardening`;
+- versão: `2.0.0-phase9.1-remote-sync`;
 - versionCode: `1`;
 - minSdk: 21;
 - targetSdk/compileSdk: 36;
@@ -131,7 +131,7 @@ Sincronização remota abstrata e update:
 - contratos e preparação segura de APK;
 - validação de tamanho, SHA-256 e assinatura.
 
-Existe o endpoint autenticado `player-manifest`, mas ele é somente contrato/backend nesta etapa. O `RemoteSyncConfig` do APK continua vazio e o sync/download remoto não está ativado.
+Os endpoints autenticados `player-manifest` e `player-media` estão ativos no Supabase isolado. O Player consulta schema 2, resolve assets autorizados e publica o conteúdo pelo cache transacional.
 
 ### `core:operations`
 
@@ -564,7 +564,7 @@ Estados:
 
 Eventos relevantes são registrados sem log por bloco.
 
-HTTP atual:
+HTTP histórico da Fase 4 (substituído para conteúdo remoto pela Fase 9.1):
 
 - `HttpURLConnection`;
 - conexão 10 s;
@@ -577,7 +577,7 @@ HTTP atual:
 - códigos 408, 429 e 5xx retryable;
 - cancelamento chama `disconnect()`.
 
-Agendamento:
+Agendamento histórico da Fase 4 (o ativo na Fase 9.1 usa one-shot de 5 min e backoff):
 
 - `JobScheduler` nativo;
 - job persistido;
@@ -1075,7 +1075,7 @@ O estado atual possui pareamento e presença conectados ao backend isolado, mas 
 
 A Fase 9 substitui como fonte operacional qualquer trecho histórico abaixo que diga que não existe contrato remoto de manifesto/backend. Existe agora um contrato autenticado e versionado por tela, descrito em `docs/PHASE9_VERSIONED_SCREEN_MANIFEST.md`, com schema 2 explícito `MEDIA`/`DYNAMIC`, snapshots imutáveis, RLS, RPCs seguras, associação no Admin 2 e Edge Function `player-manifest`.
 
-Importante: contrato disponível não significa sincronismo ativo. O APK `2.0.0-phase9.0.1-contract-hardening` **não busca nem baixa** esse manifesto. `RemoteSyncConfig` continua desabilitado e a integração de rede/cache fica para a Fase 9.1. Schema 1, ACTIVE/PREVIOUS, rollback, playback local e WEATHER aprovado permanecem compatíveis.
+Registro histórico da Fase 9.0.1: naquele APK o contrato ainda não significava sincronismo ativo. A Fase 9.1 posterior ativou rede/cache; schema 1, ACTIVE/PREVIOUS, rollback e WEATHER aprovado permanecem compatíveis.
 
 Regras permanentes mantidas: alterar somente Loopin Player 2.0/Admin 2/Supabase isolado; nunca tocar Admin antigo, Player antigo ou produção; validar tudo; fazer um commit coerente e push automático para `origin/main` após sucesso.
 

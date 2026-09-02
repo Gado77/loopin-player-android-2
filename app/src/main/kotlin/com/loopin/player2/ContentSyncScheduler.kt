@@ -82,6 +82,7 @@ class ContentSyncJobService : JobService() {
 
     override fun onStartJob(params: JobParameters): Boolean {
         val container = (application as LoopinApplication).container
+        if (container.pairingManager.snapshot().state != com.loopin.player2.core.operations.PairingState.PAIRED) return false
         val manager = container.syncManager ?: return false
         worker = Thread({
             val result = runCatching { manager.syncOnce() }

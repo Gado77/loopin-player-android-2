@@ -87,6 +87,18 @@ class LoopingPlaybackEngineTest {
         assertEquals(PlaybackState.IDLE, engine.snapshot.state)
     }
 
+    @Test
+    fun `committed playlist waits for current item completion`() {
+        engine.load(Playlist("old", 1, 1, listOf(item("old-a", 0), item("old-b", 1))))
+        engine.start()
+        engine.replaceAfterCurrent(Playlist("remote", 1, 2, listOf(item("remote-a", 0))))
+        assertEquals("old-a", engine.snapshot.currentItemId)
+        player.complete()
+        assertEquals("remote", engine.snapshot.playlistId)
+        assertEquals("remote-a", engine.snapshot.currentItemId)
+        assertEquals(listOf("old-a", "remote-a"), player.played)
+    }
+
     private fun playlist(vararg items: PlaylistItem) = Playlist("local", 1, 1, items.toList())
 
     private fun item(id: String, order: Int, local: Boolean = true) = PlaylistItem(

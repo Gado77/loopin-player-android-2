@@ -32,7 +32,7 @@ class AuthenticatedRemoteManifestSource(private val endpoint:String,private val 
   return try{c=(URL(endpoint).openConnection() as HttpURLConnection).apply{connectTimeout=10000;readTimeout=20000;setRequestProperty("Accept","application/json");setRequestProperty("Authorization","Bearer $secret");active?.manifestSha256?.let{setRequestProperty("If-None-Match","\"$it\"")}}
    registration=cancellation.onCancel(c::disconnect)
    when(val status=c.responseCode){204->RemoteManifestResult.NoAssignment;304->RemoteManifestResult.Unchanged;401->RemoteManifestResult.AuthenticationFailed;409->RemoteManifestResult.Failed("Manifest assignment conflict",false)
-    in 200..299->{val etag=c.getHeaderField("ETag")?.trim()?.removeSurrounding("\"");if(etag==null||!SHA.matches(etag))RemoteManifestResult.Failed("Manifest response has invalid ETag",false)else RemoteManifestResult.Available(VersionedManifestCodec.decode(readBounded(c,1048576)),etag.lowercase())}
+    in 200..299->{val etag=c.getHeaderField("ETag")?.trim()?.removePrefix("W/")?.removeSurrounding("\"");if(etag==null||!SHA.matches(etag))RemoteManifestResult.Failed("Manifest response has invalid ETag",false)else RemoteManifestResult.Available(VersionedManifestCodec.decode(readBounded(c,1048576)),etag.lowercase())}
     else->RemoteManifestResult.Failed("Manifest HTTP $status",status==408||status==429||status>=500)}
   }catch(e:IllegalArgumentException){RemoteManifestResult.Failed(e.message?:"Invalid manifest",false)}catch(e:IOException){RemoteManifestResult.Offline(e.message?:"Network unavailable")}finally{registration?.close();c?.disconnect()}
  }

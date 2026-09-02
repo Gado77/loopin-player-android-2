@@ -96,6 +96,7 @@ data class AppContainer(
     val telemetry: TelemetrySink,
     val remoteCommands: RemoteCommandHandler,
     val playlistRepository: PlaylistRepository,
+    val playlistActivationNotifier: PlaylistActivationNotifier,
     val syncManager: SyncManager?,
     val syncScheduler: ContentSyncScheduler?,
     val pairingManager: DevicePairingManager,
@@ -116,6 +117,8 @@ data class AppContainer(
             val operationalState = OperationalStateRegistry(application)
             val syncConfig = RemoteSyncConfigStore(application).load()
             val credentialStore = DeviceCredentialStore(application)
+            val playlistRepository = LocalTestPlaylistRepository(application, logger, transactionalStore)
+            val playlistActivationNotifier = PlaylistActivationNotifier()
             val syncManager = SyncManager(
                 remoteManifestSource = AuthenticatedRemoteManifestSource(BuildConfig.MANIFEST_ENDPOINT, credentialStore::credential),
                 localManifestSource = LocalManifestSource { transactionalStore.publicationState()?.active },
@@ -128,6 +131,9 @@ data class AppContainer(
                         "SYNC_COMMIT_SUCCESS", "SYNC_UP_TO_DATE" -> operationalState.syncSucceeded()
                         "SYNC_FAILED", "SYNC_VALIDATION_FAILED" -> operationalState.syncFailed(detail ?: event.name)
                     }
+                },
+                onCommitted = {
+                    transactionalStore.loadActivePlaylist()?.let(playlistActivationNotifier::publish)
                 },
             )
             val syncScheduler = ContentSyncScheduler(application, syncConfig, logger)
@@ -149,7 +155,8 @@ data class AppContainer(
                 networkStateObserver = NetworkStateObserver(application, stateManager, logger),
                 telemetry = DeferredTelemetrySink(),
                 remoteCommands = DeferredRemoteCommandHandler(),
-                playlistRepository = LocalTestPlaylistRepository(application, logger, transactionalStore),
+                playlistRepository = playlistRepository,
+                playlistActivationNotifier = playlistActivationNotifier,
                 syncManager = syncManager,
                 syncScheduler = syncScheduler,
                 pairingManager = pairing,

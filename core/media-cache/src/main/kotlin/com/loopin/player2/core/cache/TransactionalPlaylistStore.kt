@@ -256,9 +256,11 @@ class TransactionalPlaylistStore(
 
     fun commit(
         versionRef: String,
+        remoteManifestSha256: String = versionRef,
         observer: CommitObserver = CommitObserver { },
     ): PublicationResult = synchronized(lock) {
         if (!SHA_256.matches(versionRef)) return@synchronized PublicationResult.Rejected("Invalid version reference")
+        if (!SHA_256.matches(remoteManifestSha256)) return@synchronized PublicationResult.Rejected("Invalid remote manifest identity")
         val stage = File(stagingDirectory, versionRef)
         val version = File(versionsDirectory, versionRef)
         if (!version.isDirectory) {
@@ -278,13 +280,13 @@ class TransactionalPlaylistStore(
         val manifest = validatePublishedVersion(versionRef)
             ?: return@synchronized PublicationResult.Rejected("Published version is invalid")
         val current = recoverPublicationStateLocked()
-        if (current?.active?.versionRef == versionRef) {
+        if (current?.active?.versionRef == versionRef && current.active.manifestSha256 == remoteManifestSha256) {
             return@synchronized PublicationResult.Committed(manifest.playlistVersion, current.previous?.playlistVersion)
         }
         val newActive = PublishedVersionRef(
             playlistId = manifest.playlistId,
             playlistVersion = manifest.playlistVersion,
-            manifestSha256 = versionRef,
+            manifestSha256 = remoteManifestSha256,
             versionRef = versionRef,
             publishedAtEpochMs = clock(),
         )
@@ -385,7 +387,7 @@ class TransactionalPlaylistStore(
             validateReference(state.active)
 
     private fun validateReference(reference: PublishedVersionRef): Boolean =
-        reference.versionRef == reference.manifestSha256 &&
+        SHA_256.matches(reference.manifestSha256) &&
             validatePublishedVersion(reference.versionRef)?.let {
                 it.playlistId == reference.playlistId && it.playlistVersion == reference.playlistVersion
             } == true

@@ -15,6 +15,7 @@ class LoopingPlaybackEngine(
     private var items: List<PlaylistItem> = emptyList()
     private var currentIndex = -1
     private var retryCount = 0
+    private var pendingPlaylist: Playlist? = null
     private val failedItemIds = linkedSetOf<String>()
     private var released = false
 
@@ -34,7 +35,19 @@ class LoopingPlaybackEngine(
         currentIndex = -1
         retryCount = 0
         failedItemIds.clear()
+        pendingPlaylist = null
         publish(PlaybackSnapshot(playlistId = playlist.id))
+    }
+
+    @Synchronized
+    fun replaceAfterCurrent(playlist: Playlist) {
+        check(!released) { "Playback engine is released" }
+        if (snapshot.state == PlaybackState.IDLE || currentIndex !in items.indices) {
+            load(playlist)
+            start()
+        } else {
+            pendingPlaylist = playlist
+        }
     }
 
     @Synchronized
@@ -101,6 +114,16 @@ class LoopingPlaybackEngine(
         failedItemIds.remove(items[currentIndex].id)
         retryCount = 0
         publish(snapshot.copy(state = PlaybackState.COMPLETED))
+        pendingPlaylist?.let { pending ->
+            pendingPlaylist = null
+            itemPlayer.stopAndReleaseCurrent()
+            items = pending.orderedItems().filter(PlaylistItem::isValid)
+            currentIndex = 0
+            failedItemIds.clear()
+            publish(PlaybackSnapshot(playlistId = pending.id))
+            if (items.isNotEmpty()) playCurrent(PlaybackState.PREPARING)
+            return
+        }
         advanceAndPlay()
     }
 

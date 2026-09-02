@@ -36,6 +36,7 @@ class MainActivity : Activity() {
     private val kioskController by lazy { KioskController(this, container.logger) }
     private var stateSubscription: AutoCloseable? = null
     private var playbackSubscription: AutoCloseable? = null
+    private var playlistActivationSubscription: AutoCloseable? = null
     private var playbackEngine: PlaybackEngine? = null
     private lateinit var playbackSurface: PlaybackSurface
     private lateinit var identityPanel: View
@@ -56,6 +57,9 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         setContentView(createPlaybackScreen())
         stateSubscription = container.stateManager.subscribe(::renderDeviceState)
+        playlistActivationSubscription = container.playlistActivationNotifier.subscribe { playlist ->
+            runOnUiThread { (playbackEngine as? LoopingPlaybackEngine)?.replaceAfterCurrent(playlist) }
+        }
         dynamicContent?.start()
         if (!isPaired()) startPairing()
         container.logger.log(
@@ -99,6 +103,8 @@ class MainActivity : Activity() {
         dynamicContent = null
         stateSubscription?.close()
         stateSubscription = null
+        playlistActivationSubscription?.close()
+        playlistActivationSubscription = null
         container.logger.log(LogLevel.DEBUG, TAG, "Activity destroyed; finishing=$isFinishing")
         super.onDestroy()
     }
