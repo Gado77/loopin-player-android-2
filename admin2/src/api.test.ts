@@ -1,8 +1,9 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { assignPlaylistVersion, createScreen, listPublishedPlaylistVersions, listScreens, login, pairPlayer } from "./api";
+import { assignPlaylistVersion, createPlaylist, createScreen, listMediaAssets, listPlaylists, listPublishedPlaylistVersions, listScreens, login, pairPlayer, publishPlaylistDraft, savePlaylistDraft, uploadMediaAsset } from "./api";
 
 describe("Admin API", () => {
+  afterEach(() => vi.unstubAllGlobals());
   it("faz login por email e senha", async () => {
     const signInWithPassword = vi.fn().mockResolvedValue({ data: { session: { access_token: "token" } }, error: null });
     const client = { auth: { signInWithPassword } } as unknown as SupabaseClient;
@@ -63,5 +64,72 @@ describe("Admin API", () => {
     const client = { functions: { invoke } } as unknown as SupabaseClient;
     await pairPlayer(client, "s1", { kind: "token", token: "A".repeat(43) });
     expect(invoke).toHaveBeenCalledWith("device-pairing", { body: { action: "confirm", screen_id: "s1", pairing_token: "A".repeat(43) } });
+  });
+
+  it("lists the authenticated media library", async () => {
+    const order = vi.fn().mockResolvedValue({ data: [{ id: "a1" }], error: null });
+    const select = vi.fn(() => ({ order }));
+    const client = { from: vi.fn(() => ({ select })) } as unknown as SupabaseClient;
+    await expect(listMediaAssets(client)).resolves.toEqual([{ id:"a1" }]);
+    expect(client.from).toHaveBeenCalledWith("player_media_assets");
+    expect(select).toHaveBeenCalledWith(expect.stringContaining("storage_path"));
+  });
+
+  it("deduplicates upload by the owner's SHA before Storage", async () => {
+    const order = vi.fn().mockResolvedValue({ data: [{ id:"same", sha256:"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad" }], error:null });
+    const upload = vi.fn();
+    const client = { from: vi.fn(() => ({ select: () => ({ order }) })), storage:{ from:vi.fn(() => ({ upload })) } } as unknown as SupabaseClient;
+    const result = await uploadMediaAsset(client,"user",new File(["abc"],"a.png",{type:"image/png"}));
+    expect(result).toMatchObject({ deduplicated:true, asset:{ id:"same" } });
+    expect(upload).not.toHaveBeenCalled();
+  });
+
+  it("uploads to a tenant namespace and registers through RPC", async () => {
+    vi.stubGlobal("crypto", { randomUUID: () => "123e4567-e89b-42d3-a456-426614174000" });
+    const order = vi.fn().mockResolvedValue({ data: [], error:null });
+    const upload = vi.fn().mockResolvedValue({ data:{ path:"ok" }, error:null });
+    const rpc = vi.fn().mockResolvedValue({ data:{ id:"asset" }, error:null });
+    const states:string[]=[];
+    const client = { from: vi.fn(() => ({ select: () => ({ order }) })), storage:{ from:vi.fn(() => ({ upload })) }, rpc } as unknown as SupabaseClient;
+    await expect(uploadMediaAsset(client,"owner-1",new File(["abc"],"photo.png",{type:"image/png"}),state=>states.push(state))).resolves.toMatchObject({deduplicated:false});
+    expect(upload).toHaveBeenCalledWith("users/owner-1/123e4567-e89b-42d3-a456-426614174000/original.png",expect.any(File),{contentType:"image/png",upsert:false});
+    expect(rpc).toHaveBeenCalledWith("register_player_media_asset",expect.objectContaining({p_asset_id:"123e4567-e89b-42d3-a456-426614174000",p_expected_size_bytes:3,p_mime_type:"image/png"}));
+    expect(states).toEqual(["Calculando integridade…","Enviando…","Registrando…","Concluído."]);
+  });
+
+  it("does not register a failed Storage upload", async () => {
+    vi.stubGlobal("crypto", { randomUUID: () => "123e4567-e89b-42d3-a456-426614174000" });
+    const order = vi.fn().mockResolvedValue({ data: [], error:null });
+    const rpc = vi.fn();
+    const client = { from:vi.fn(() => ({select:()=>({order})})), storage:{from:()=>({upload:vi.fn().mockResolvedValue({error:{}})})}, rpc } as unknown as SupabaseClient;
+    await expect(uploadMediaAsset(client,"owner",new File(["abc"],"a.mp4",{type:"video/mp4"}))).rejects.toThrow("Falha ao enviar");
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it("lists playlists with drafts and immutable history", async () => {
+    const order = vi.fn().mockResolvedValue({data:[{id:"p1"}],error:null});
+    const select = vi.fn(() => ({order}));
+    const client={from:vi.fn(()=>({select}))} as unknown as SupabaseClient;
+    await expect(listPlaylists(client)).resolves.toHaveLength(1);
+    expect(select).toHaveBeenCalledWith(expect.stringContaining("player_playlist_drafts"));
+    expect(select).toHaveBeenCalledWith(expect.stringContaining("player_playlist_versions"));
+  });
+
+  it("creates a trimmed owner-scoped playlist", async () => {
+    const single=vi.fn().mockResolvedValue({data:{id:"p1",name:"Grade"},error:null});
+    const select=vi.fn(()=>({single})); const insert=vi.fn(()=>({select}));
+    const client={from:vi.fn(()=>({insert}))} as unknown as SupabaseClient;
+    await createPlaylist(client,"owner"," Grade ");
+    expect(insert).toHaveBeenCalledWith({owner_id:"owner",name:"Grade"});
+  });
+
+  it("saves drafts and publishes only through secure RPCs", async () => {
+    const rpc=vi.fn().mockResolvedValue({data:{id:"v1"},error:null});
+    const client={rpc} as unknown as SupabaseClient;
+    const items=[{id:"i",order:0,kind:"MEDIA" as const,assetId:"a"}];
+    await savePlaylistDraft(client,"p1",items);
+    await publishPlaylistDraft(client,"p1");
+    expect(rpc).toHaveBeenNthCalledWith(1,"save_player_playlist_draft",{p_playlist_id:"p1",p_items:items});
+    expect(rpc).toHaveBeenNthCalledWith(2,"publish_player_playlist_draft",{p_playlist_id:"p1"});
   });
 });

@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { PairingProof, PairingResult, PlaylistVersion, Screen } from "./types";
+import type { DraftItem, MediaAsset, PairingProof, PairingResult, Playlist, PlaylistVersion, Screen } from "./types";
+import { hashFile, safeExtension, validateMediaFile } from "./media";
 import { pairingErrorMessage } from "./pairing";
 
 export async function login(client: SupabaseClient, email: string, password: string) {
@@ -49,6 +50,13 @@ export async function createScreen(client: SupabaseClient, ownerId: string, name
   if (error || !data) throw new Error("Não foi possível criar a tela.");
   return { ...data, devices: [] } as Screen;
 }
+
+export async function listMediaAssets(client:SupabaseClient):Promise<MediaAsset[]>{const {data,error}=await client.from("player_media_assets").select("id,name,media_type,expected_size_bytes,sha256,mime_type,storage_path,created_at").order("created_at",{ascending:false});if(error)throw new Error("Não foi possível carregar suas mídias.");return (data??[]) as MediaAsset[];}
+export async function uploadMediaAsset(client:SupabaseClient,userId:string,file:File,onState:(state:string)=>void=()=>{}):Promise<{asset:MediaAsset;deduplicated:boolean}>{const mediaType=validateMediaFile(file);onState("Calculando integridade…");const sha256=await hashFile(file);const existing=(await listMediaAssets(client)).find(asset=>asset.sha256===sha256);if(existing)return{asset:existing,deduplicated:true};const assetId=crypto.randomUUID();const path=`users/${userId}/${assetId}/original.${safeExtension(file.type)}`;onState("Enviando…");const upload=await client.storage.from("player2-media").upload(path,file,{contentType:file.type,upsert:false});if(upload.error)throw new Error("Falha ao enviar a mídia.");onState("Registrando…");const {data,error}=await client.rpc("register_player_media_asset",{p_asset_id:assetId,p_name:file.name,p_media_type:mediaType,p_expected_size_bytes:file.size,p_sha256:sha256,p_mime_type:file.type});if(error)throw new Error("Mídia enviada, mas o registro seguro falhou.");onState("Concluído.");return{asset:data as MediaAsset,deduplicated:false};}
+export async function listPlaylists(client:SupabaseClient):Promise<Playlist[]>{const {data,error}=await client.from("player_playlists").select("id,name,created_at,player_playlist_drafts(items,updated_at),player_playlist_versions(id,playlist_id,version_number,manifest_sha256,published_at)").order("created_at",{ascending:false});if(error)throw new Error("Não foi possível carregar suas playlists.");return(data??[]) as unknown as Playlist[];}
+export async function createPlaylist(client:SupabaseClient,ownerId:string,name:string):Promise<Playlist>{const normalized=name.trim();if(!normalized||normalized.length>100)throw new Error("Informe um nome válido.");const {data,error}=await client.from("player_playlists").insert({owner_id:ownerId,name:normalized}).select("id,name,created_at").single();if(error||!data)throw new Error("Não foi possível criar a playlist.");return data as Playlist;}
+export async function savePlaylistDraft(client:SupabaseClient,playlistId:string,items:DraftItem[]){const {data,error}=await client.rpc("save_player_playlist_draft",{p_playlist_id:playlistId,p_items:items});if(error)throw new Error("Não foi possível salvar o rascunho.");return data;}
+export async function publishPlaylistDraft(client:SupabaseClient,playlistId:string):Promise<PlaylistVersion>{const {data,error}=await client.rpc("publish_player_playlist_draft",{p_playlist_id:playlistId});if(error)throw new Error("Não foi possível publicar o rascunho.");return data as PlaylistVersion;}
 
 export async function pairPlayer(
   client: SupabaseClient,

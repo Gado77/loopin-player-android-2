@@ -42,3 +42,9 @@ export type PairingResult = {
   screen_name: string;
   paired_at: string;
 };
+
+export type MediaAsset = { id:string; name:string; media_type:"VIDEO"|"IMAGE"; expected_size_bytes:number; sha256:string; mime_type:string; storage_path:string; created_at:string };
+export type DraftMediaItem = { id:string; order:number; kind:"MEDIA"; assetId:string; durationMs?:number };
+export type DraftWeatherItem = { id:string; order:number; kind:"DYNAMIC"; dynamicType:"WEATHER"; durationMs:number; configuration:{city:string;lat:string;lon:string} };
+export type DraftItem = DraftMediaItem | DraftWeatherItem;
+export type Playlist = { id:string; name:string; created_at:string; player_playlist_drafts?:{items:DraftItem[];updated_at:string}|null; player_playlist_versions?:PlaylistVersion[] };

@@ -1085,3 +1085,23 @@ A revisão pós-Fase 9 corrigiu o shape one-to-one da associação no Admin, lis
 # Estado atual — Fase 9.1
 
 A Fase 9 definiu contrato e associação de manifesto por tela. A Fase 9.1 ativa consulta autenticada, autorização temporária por asset, download streaming e publicação transacional do conteúdo remoto. Trechos históricos abaixo que descrevem sync/backend como inexistentes não representam mais o estado operacional.
+
+# Estado atual — Fase 10 (2026-09-03)
+
+A gestão mínima de conteúdo agora é operacional no Admin 2. Usuários autenticados navegam entre Telas, Mídias e Playlists, enviam MP4/JPEG/PNG ao bucket privado, criam rascunhos com MEDIA/WEATHER, ordenam/removem itens, publicam versões imutáveis e as atribuem pelo contrato existente. O Player consome sem qualquer alteração Android.
+
+Regras autoritativas:
+
+- Storage: `player2-media`, caminho `users/<auth.uid()>/<asset_uuid>/original.<ext>`, INSERT próprio e sem overwrite;
+- limites: IMAGE 20 MiB, VIDEO 300 MiB;
+- SHA-256 incremental em chunks de 2 MiB no Admin, confirmado novamente pelo Player após download;
+- registro de asset apenas via `register_player_media_asset`, que deriva owner/path e confere o objeto;
+- draft mutável em `player_playlist_drafts`, nunca servido ao Player;
+- save/publicação via RPCs; snapshots publicados continuam imutáveis e monotônicos;
+- publicação não muda telas automaticamente; associação permanece via `assign_player_playlist_version`;
+- nenhum DELETE de mídia foi exposto, para preservar referências históricas;
+- nenhuma dependência ou mudança de versão Android foi introduzida.
+
+Validação da fase: 61 testes Admin, 195 testes Android/JVM, builds Admin/debug/release e lint aprovados, `npm audit` com zero vulnerabilidades. Supabase real validou dois tenants e bloqueios cruzados. LDPlayer recebeu v1 VIDEO → WEATHER → IMAGE e v2 IMAGE → VIDEO, publicou ACTIVE/PREVIOUS, reutilizou cache e continuou reproduzindo sem rede. Dados e infraestrutura temporária foram removidos. Detalhes: `docs/PHASE10_CONTENT_ADMIN.md`.
+
+Continuam fora do produto: campanhas/calendário, exclusão/retenção de assets, transcoding, analytics, comandos, OTA, Realtime e certificação física da MXQ.

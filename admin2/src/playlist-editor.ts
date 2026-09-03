@@ -1,0 +1,8 @@
+import type { DraftItem, DraftWeatherItem, MediaAsset } from "./types";
+export const DURATION_LIMITS={min:1000,max:3_600_000};
+export const normalizeItems=(items:DraftItem[])=>items.map((item,order)=>({...item,order}));
+export function moveItem(items:DraftItem[],index:number,direction:-1|1){const target=index+direction;if(target<0||target>=items.length)return normalizeItems(items);const copy=[...items];[copy[index],copy[target]]=[copy[target],copy[index]];return normalizeItems(copy);}
+export const removeItem=(items:DraftItem[],index:number)=>normalizeItems(items.filter((_,i)=>i!==index));
+export function mediaItem(asset:MediaAsset,durationSeconds?:number):DraftItem{let durationMs: number|undefined;if(asset.media_type==="IMAGE"){durationMs=Math.round(Number(durationSeconds)*1000);validateDuration(durationMs);}return {id:crypto.randomUUID(),order:0,kind:"MEDIA",assetId:asset.id,...(durationMs?{durationMs}:{})};}
+export function weatherItem(city:string,lat:string,lon:string,durationSeconds:number):DraftWeatherItem{const latitude=Number(lat),longitude=Number(lon),durationMs=Math.round(Number(durationSeconds)*1000);if(!city.trim())throw new Error("Informe a cidade.");if(!Number.isFinite(latitude)||latitude < -90||latitude>90)throw new Error("Latitude inválida.");if(!Number.isFinite(longitude)||longitude < -180||longitude>180)throw new Error("Longitude inválida.");validateDuration(durationMs);return{id:crypto.randomUUID(),order:0,kind:"DYNAMIC",dynamicType:"WEATHER",durationMs,configuration:{city:city.trim(),lat:String(latitude),lon:String(longitude)}};}
+function validateDuration(value:number){if(!Number.isFinite(value)||value<DURATION_LIMITS.min||value>DURATION_LIMITS.max)throw new Error("Duração deve ficar entre 1 e 3600 segundos.");}
