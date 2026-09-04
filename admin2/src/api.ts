@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { DraftItem, MediaAsset, PairingProof, PairingResult, Playlist, PlaylistVersion, Screen } from "./types";
+import type { DeviceCommand, DraftItem, MediaAsset, PairingProof, PairingResult, PlayerCommandType, Playlist, PlaylistVersion, Screen } from "./types";
 import { hashFile, safeExtension, validateMediaFile } from "./media";
 import { pairingErrorMessage } from "./pairing";
 
@@ -57,6 +57,8 @@ export async function listPlaylists(client:SupabaseClient):Promise<Playlist[]>{c
 export async function createPlaylist(client:SupabaseClient,ownerId:string,name:string):Promise<Playlist>{const normalized=name.trim();if(!normalized||normalized.length>100)throw new Error("Informe um nome válido.");const {data,error}=await client.from("player_playlists").insert({owner_id:ownerId,name:normalized}).select("id,name,created_at").single();if(error||!data)throw new Error("Não foi possível criar a playlist.");return data as Playlist;}
 export async function savePlaylistDraft(client:SupabaseClient,playlistId:string,items:DraftItem[]){const {data,error}=await client.rpc("save_player_playlist_draft",{p_playlist_id:playlistId,p_items:items});if(error)throw new Error("Não foi possível salvar o rascunho.");return data;}
 export async function publishPlaylistDraft(client:SupabaseClient,playlistId:string):Promise<PlaylistVersion>{const {data,error}=await client.rpc("publish_player_playlist_draft",{p_playlist_id:playlistId});if(error)throw new Error("Não foi possível publicar o rascunho.");return data as PlaylistVersion;}
+export async function listRecentCommands(client:SupabaseClient):Promise<DeviceCommand[]>{const{data,error}=await client.from("device_commands").select("id,screen_id,device_id,command_type,status,created_at,delivered_at,completed_at,expires_at,result").order("created_at",{ascending:false}).limit(50);if(error)throw new Error("Não foi possível carregar os comandos.");return(data??[]) as DeviceCommand[];}
+export async function enqueuePlayerCommand(client:SupabaseClient,screenId:string,commandType:PlayerCommandType):Promise<DeviceCommand>{const{data,error}=await client.rpc("enqueue_player_command",{p_screen_id:screenId,p_command_type:commandType,p_payload:null});if(error||!data)throw new Error("Não foi possível enviar o comando.");return data as DeviceCommand;}
 
 export async function pairPlayer(
   client: SupabaseClient,

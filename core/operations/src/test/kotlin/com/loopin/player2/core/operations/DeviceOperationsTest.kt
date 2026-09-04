@@ -109,7 +109,10 @@ class DeviceOperationsTest {
         assertEquals(HeartbeatDispatchResult.Success, dispatcher.dispatch())
     }
     @Test fun `unknown command is unsupported`() {
-        assertIs<CommandResult.Unsupported>(DeferredCommandExecutor().execute(RemoteCommand("1", CommandType.UNKNOWN)))
+        val result = SafeCommandExecutor({ health() }, { "scheduled" }, { "reloaded" })
+            .execute(RemoteCommand("1", CommandType.UNKNOWN, 0, Long.MAX_VALUE))
+        assertEquals(CommandCompletionStatus.FAILED, result.status)
+        assertEquals("unsupported", result.result["code"])
     }
     @Test fun `pairing recovers after force stop`() {
         val store = MemoryPairingStore(); DevicePairingManager(store).complete(DeviceAssignment(playlistId = "p1"))

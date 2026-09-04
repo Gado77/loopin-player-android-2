@@ -11,3 +11,7 @@ entrypoint = "./functions/player-manifest/index.ts"
 [functions.player-media]
 verify_jwt = false
 entrypoint = "./functions/player-media/index.ts"
+
+[functions.player-commands]
+verify_jwt = false
+entrypoint = "./functions/player-commands/index.ts"

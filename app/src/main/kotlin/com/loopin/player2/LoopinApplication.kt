@@ -46,10 +46,14 @@ class LoopinApplication : Application(), Application.ActivityLifecycleCallbacks 
                 if (state.networkAvailable && container.pairingManager.snapshot().state == PairingState.PAIRED) {
                     container.heartbeatScheduler.schedule()
                     container.syncScheduler?.schedule(0)
+                    container.commandScheduler.schedule()
                 }
             }
         }
-        if (container.pairingManager.snapshot().state == PairingState.PAIRED) container.syncScheduler?.schedule(0)
+        if (container.pairingManager.snapshot().state == PairingState.PAIRED) {
+            container.syncScheduler?.schedule(0)
+            container.commandScheduler.schedule()
+        }
         container.telemetry.record(TelemetryEvent("foundation_started", System.currentTimeMillis()))
         container.logger.log(LogLevel.INFO, TAG, OperationalLogEvent.DEVICE_STARTED)
         container.logger.log(LogLevel.INFO, TAG, OperationalLogEvent.DEVICE_READY)
@@ -105,6 +109,8 @@ data class AppContainer(
     val heartbeatDispatcher: DeviceHeartbeatDispatcher,
     val heartbeatScheduler: DeviceHeartbeatScheduler,
     val commandExecutor: CommandExecutor,
+    val commandDispatcher: DeviceCommandDispatcher,
+    val commandScheduler: DeviceCommandScheduler,
     val updateManager: OperationalUpdateManager,
     val operationalState: OperationalStateRegistry,
 ) {
@@ -148,6 +154,35 @@ data class AppContainer(
                 heartbeatSource = heartbeatSource,
                 transport = DeviceHeartbeatHttpApi(),
             )
+            val commandScheduler = DeviceCommandScheduler(application, logger)
+            val commandExecutor = SafeCommandExecutor(
+                status = health::collectNow,
+                syncNow = {
+                    val result = when {
+                        syncManager.isRunning() -> "already_running"
+                        syncScheduler.schedule(0) -> "scheduled"
+                        else -> "schedule_failed"
+                    }
+                    logger.log(LogLevel.INFO, "DeviceCommands", "COMMAND_SYNC_REQUESTED code=$result")
+                    result
+                },
+                reloadPlaylist = {
+                    val result = transactionalStore.loadActivePlaylist()?.let {
+                        playlistActivationNotifier.publish(it)
+                        "reloaded"
+                    } ?: "no_active_playlist"
+                    logger.log(LogLevel.INFO, "DeviceCommands", "COMMAND_RELOAD_REQUESTED code=$result")
+                    result
+                },
+            )
+            val commandDispatcher = DeviceCommandDispatcher(
+                endpoint = BuildConfig.COMMAND_ENDPOINT,
+                pairingState = { pairing.snapshot().state },
+                credential = credentialStore::credential,
+                transport = DeviceCommandHttpApi(),
+                executor = commandExecutor,
+                executed = SharedPreferencesExecutedCommandStore(application),
+            )
             return AppContainer(
                 config = config,
                 logger = logger,
@@ -164,7 +199,9 @@ data class AppContainer(
                 heartbeatSource = heartbeatSource,
                 heartbeatDispatcher = heartbeatDispatcher,
                 heartbeatScheduler = heartbeatScheduler,
-                commandExecutor = DeferredCommandExecutor(),
+                commandExecutor = commandExecutor,
+                commandDispatcher = commandDispatcher,
+                commandScheduler = commandScheduler,
                 updateManager = OperationalUpdateManager(AndroidUpdateSettingsStore(application), BuildConfig.VERSION_NAME),
                 operationalState = operationalState,
             )

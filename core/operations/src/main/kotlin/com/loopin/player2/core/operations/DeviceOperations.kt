@@ -230,17 +230,6 @@ enum class CommandType {
     companion object { fun parse(value: String): CommandType = entries.firstOrNull { it.name == value } ?: UNKNOWN }
 }
 
-data class RemoteCommand(val id: String, val type: CommandType, val payload: String? = null)
-sealed interface CommandResult {
-    data object Deferred : CommandResult
-    data class Unsupported(val rawType: String) : CommandResult
-}
-fun interface CommandExecutor { fun execute(command: RemoteCommand): CommandResult }
-class DeferredCommandExecutor : CommandExecutor {
-    override fun execute(command: RemoteCommand): CommandResult = if (command.type == CommandType.UNKNOWN)
-        CommandResult.Unsupported(CommandType.UNKNOWN.name) else CommandResult.Deferred
-}
-
 enum class UpdateChannel { STABLE, BETA }
 enum class OperationalUpdateState {
     UP_TO_DATE, UPDATE_AVAILABLE, DOWNLOADING, DOWNLOADED, VALIDATING,

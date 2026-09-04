@@ -249,6 +249,7 @@ class MainActivity : Activity() {
                 identityPanel.visibility = View.GONE
                 container.heartbeatScheduler.schedule()
                 container.syncScheduler?.schedule(0)
+                container.commandScheduler.schedule()
                 startPlayback()
             } },
         ).also(PairingCoordinator::start)

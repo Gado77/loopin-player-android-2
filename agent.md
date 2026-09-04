@@ -1104,4 +1104,12 @@ Regras autoritativas:
 
 Validação da fase: 61 testes Admin, 195 testes Android/JVM, builds Admin/debug/release e lint aprovados, `npm audit` com zero vulnerabilidades. Supabase real validou dois tenants e bloqueios cruzados. LDPlayer recebeu v1 VIDEO → WEATHER → IMAGE e v2 IMAGE → VIDEO, publicou ACTIVE/PREVIOUS, reutilizou cache e continuou reproduzindo sem rede. Dados e infraestrutura temporária foram removidos. Detalhes: `docs/PHASE10_CONTENT_ADMIN.md`.
 
-Continuam fora do produto: campanhas/calendário, exclusão/retenção de assets, transcoding, analytics, comandos, OTA, Realtime e certificação física da MXQ.
+Ao fim da Fase 10 ainda estavam fora do produto: campanhas/calendário, exclusão/retenção de assets, transcoding, analytics, comandos, OTA, Realtime e certificação física da MXQ. A Fase 11 abaixo substitui apenas a afirmação histórica sobre comandos.
+
+# Estado atual — Fase 11 (2026-09-04)
+
+Comandos remotos seguros agora são operacionais no Admin 2, backend isolado e Player. A fila persistente `device_commands`, as RPCs whitelistadas e a Edge Function `player-commands` formam a cadeia autenticada e auditável. O Player consulta por `JobScheduler` one-shot, executa somente `GET_STATUS`, `SYNC_NOW` e `RELOAD_PLAYLIST`, persiste os últimos 100 resultados antes da confirmação e não repete a ação em caso de reentrega ou reboot.
+
+O Admin só cria comandos para telas próprias via RPC, mostra os últimos cinco resultados e mantém polling de 12 segundos apenas enquanto existe comando pendente. RLS/cross-device, TTL de 15 minutos, claim transacional, completion idempotente, backoff e resultados limitados foram validados no Supabase real isolado. No LDPlayer, os três comandos concluíram, sync/reload preservaram o playback, replay e reboot não repetiram a ação e o conteúdo continuou offline. O parser Android aceita os microssegundos reais dos timestamps Supabase.
+
+Continuam proibidos/não implementados: `RESTART_PLAYER`, `CLEAR_CACHE`, `CHECK_UPDATE`, `REBOOT_DEVICE`, `CAPTURE_SCREENSHOT`, shell, ação arbitrária, OTA, Realtime e controle de firmware. Certificação e soak test na MXQ permanecem pendentes. Documento autoritativo: `docs/PHASE11_SAFE_REMOTE_COMMANDS.md`.

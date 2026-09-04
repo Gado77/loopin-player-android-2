@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { assignPlaylistVersion, createPlaylist, createScreen, listMediaAssets, listPlaylists, listPublishedPlaylistVersions, listScreens, login, pairPlayer, publishPlaylistDraft, savePlaylistDraft, uploadMediaAsset } from "./api";
+import { assignPlaylistVersion, createPlaylist, createScreen, enqueuePlayerCommand, listMediaAssets, listPlaylists, listPublishedPlaylistVersions, listRecentCommands, listScreens, login, pairPlayer, publishPlaylistDraft, savePlaylistDraft, uploadMediaAsset } from "./api";
 
 describe("Admin API", () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -132,4 +132,10 @@ describe("Admin API", () => {
     expect(rpc).toHaveBeenNthCalledWith(1,"save_player_playlist_draft",{p_playlist_id:"p1",p_items:items});
     expect(rpc).toHaveBeenNthCalledWith(2,"publish_player_playlist_draft",{p_playlist_id:"p1"});
   });
+
+  it("enqueues each safe command through the owner-authorizing RPC",async()=>{for(const type of ["GET_STATUS","SYNC_NOW","RELOAD_PLAYLIST"] as const){const rpc=vi.fn().mockResolvedValue({data:{id:type,status:"PENDING"},error:null});const client={rpc} as unknown as SupabaseClient;await expect(enqueuePlayerCommand(client,"screen",type)).resolves.toMatchObject({status:"PENDING"});expect(rpc).toHaveBeenCalledWith("enqueue_player_command",{p_screen_id:"screen",p_command_type:type,p_payload:null});}});
+
+  it("loads only recent command history visible through RLS",async()=>{const limit=vi.fn().mockResolvedValue({data:[{id:"c1"}],error:null});const order=vi.fn(()=>({limit}));const select=vi.fn(()=>({order}));const client={from:vi.fn(()=>({select}))} as unknown as SupabaseClient;await expect(listRecentCommands(client)).resolves.toHaveLength(1);expect(client.from).toHaveBeenCalledWith("device_commands");expect(limit).toHaveBeenCalledWith(50);});
+
+  it("reports command enqueue and history failures safely",async()=>{const rpcClient={rpc:vi.fn().mockResolvedValue({data:null,error:{}})} as unknown as SupabaseClient;await expect(enqueuePlayerCommand(rpcClient,"screen","GET_STATUS")).rejects.toThrow("Não foi possível enviar");const order=vi.fn(()=>({limit:vi.fn().mockResolvedValue({data:null,error:{}})}));const listClient={from:vi.fn(()=>({select:vi.fn(()=>({order}))}))} as unknown as SupabaseClient;await expect(listRecentCommands(listClient)).rejects.toThrow("Não foi possível carregar");});
 });

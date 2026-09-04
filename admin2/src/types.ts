@@ -48,3 +48,6 @@ export type DraftMediaItem = { id:string; order:number; kind:"MEDIA"; assetId:st
 export type DraftWeatherItem = { id:string; order:number; kind:"DYNAMIC"; dynamicType:"WEATHER"; durationMs:number; configuration:{city:string;lat:string;lon:string} };
 export type DraftItem = DraftMediaItem | DraftWeatherItem;
 export type Playlist = { id:string; name:string; created_at:string; player_playlist_drafts?:{items:DraftItem[];updated_at:string}|null; player_playlist_versions?:PlaylistVersion[] };
+export type PlayerCommandType = "GET_STATUS"|"SYNC_NOW"|"RELOAD_PLAYLIST";
+export type PlayerCommandStatus = "PENDING"|"DELIVERED"|"SUCCEEDED"|"FAILED"|"EXPIRED";
+export type DeviceCommand = { id:string; screen_id:string; device_id:string; command_type:PlayerCommandType; status:PlayerCommandStatus; created_at:string; delivered_at:string|null; completed_at:string|null; expires_at:string; result:Record<string,unknown>|null };
