@@ -33,7 +33,9 @@ class DeviceHeartbeatHttpApi : DeviceHeartbeatTransport {
             val body = JSONObject()
                 .put("action", request.payload.action)
                 .put("app_version", request.payload.appVersion)
-                .put("metadata", JSONObject(request.payload.metadata))
+                .put("session_id", request.payload.sessionId)
+                .put("runtime", JSONObject(request.payload.runtime))
+                .put("last_error", request.payload.lastError?.let(::JSONObject) ?: JSONObject.NULL)
                 .toString()
                 .toByteArray(Charsets.UTF_8)
             connection.outputStream.use { it.write(body) }

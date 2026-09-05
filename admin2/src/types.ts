@@ -4,7 +4,11 @@ export type ScreenDevice = {
   last_seen_at: string | null;
   app_version: string | null;
   metadata?: Record<string, unknown> | null;
+  runtime_status?: DeviceRuntimeStatus | null;
 };
+
+export type DeviceRuntimeStatus={device_id:string;screen_id:string;last_seen_at:string;session_id:string;app_version:string;uptime_ms:number;available_memory_bytes:number;memory_low:boolean;free_storage_bytes:number;total_storage_bytes:number;playback_state:"PLAYING"|"PAUSED"|"ERROR"|"OFFLINE"|"IDLE";cache_state:"OK"|"INCOMPLETE"|"ERROR";sync_state:"OK"|"SYNCING"|"ERROR"|"NEVER_SYNCED";health_state:"HEALTHY"|"DEGRADED"|"ERROR";last_sync_at:string|null;last_error_code:string|null;last_error_summary:string|null;last_error_at:string|null;active_playlist_id:string|null;active_playlist_version:number|null;active_manifest_etag:string|null;previous_playlist_id:string|null;current_item_id:string|null;current_content_kind:"MEDIA"|"DYNAMIC"|null;current_media_type:"VIDEO"|"IMAGE"|"WEATHER"|null;updated_at:string};
+export type DeviceHealthEvent={id:string;device_id:string;screen_id:string;event_type:string;severity:"INFO"|"WARNING"|"ERROR";occurred_at:string;metadata:Record<string,unknown>};
 
 export type Screen = {
   id: string;

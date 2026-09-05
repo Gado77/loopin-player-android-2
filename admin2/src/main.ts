@@ -1,17 +1,18 @@
 import "./styles.css";
 import type { Session } from "@supabase/supabase-js";
-import { assignPlaylistVersion, createPlaylist, createScreen, enqueuePlayerCommand, listMediaAssets, listPlaylists, listPublishedPlaylistVersions, listRecentCommands, listScreens, login, logout, pairPlayer, publishPlaylistDraft, savePlaylistDraft, uploadMediaAsset } from "./api";
+import { assignPlaylistVersion, createPlaylist, createScreen, enqueuePlayerCommand, listHealthEvents, listMediaAssets, listPlaylists, listPublishedPlaylistVersions, listRecentCommands, listScreens, login, logout, pairPlayer, publishPlaylistDraft, savePlaylistDraft, uploadMediaAsset } from "./api";
 import { parsePairingCode, parsePairingQr } from "./pairing";
 import { PairingScanner } from "./scanner";
 import { classifyPresence, formatLastCommunication, presenceLabel } from "./presence";
 import { DashboardPresenceRefresher } from "./refresh";
 import { bindScreenGridEvents } from "./screen-grid-events";
 import { supabase } from "./supabase";
-import type { DeviceCommand, DraftItem, MediaAsset, PairingProof, PlayerCommandType, Playlist, PlaylistVersion, Screen } from "./types";
+import type { DeviceCommand, DeviceHealthEvent, DraftItem, MediaAsset, PairingProof, PlayerCommandType, Playlist, PlaylistVersion, Screen, ScreenDevice } from "./types";
 import { mediaItem, moveItem, normalizeItems, removeItem, weatherItem } from "./playlist-editor";
 import { parseAdminArea, type AdminArea } from "./navigation";
 import { COMMAND_LABELS, commandResultLabel, commandStatusLabel, hasPendingCommands } from "./commands";
 import { CommandRefreshController } from "./command-refresh";
+import { diagnosticHealth, eventLabel, formatBytes, formatUptime, healthLabel, isStorageLow, recentEvents } from "./diagnostics";
 
 const root = document.querySelector<HTMLDivElement>("#app")!;
 const scanner = new PairingScanner();
@@ -26,6 +27,7 @@ let activeArea: AdminArea = "screens";
 let editingPlaylist: Playlist | null = null;
 let draftItems: DraftItem[] = [];
 let deviceCommands: DeviceCommand[] = [];
+let healthEvents:DeviceHealthEvent[]=[];
 const presenceRefresh = new DashboardPresenceRefresher(
   refreshDashboardData,
   () => document.visibilityState === "visible",
@@ -81,7 +83,7 @@ function renderLogin() {
 
 async function loadDashboard() {
   try {
-    [screens, playlistVersions, mediaAssets, playlists, deviceCommands] = await Promise.all([listScreens(supabase), listPublishedPlaylistVersions(supabase), listMediaAssets(supabase), listPlaylists(supabase), listRecentCommands(supabase)]);
+    [screens, playlistVersions, mediaAssets, playlists, deviceCommands,healthEvents] = await Promise.all([listScreens(supabase), listPublishedPlaylistVersions(supabase), listMediaAssets(supabase), listPlaylists(supabase), listRecentCommands(supabase),listHealthEvents(supabase)]);
     renderDashboard();
   } catch (error) {
     renderDashboard();
@@ -93,7 +95,7 @@ async function loadDashboard() {
 
 async function refreshDashboardData() {
   if (!session) return;
-  screens = await listScreens(supabase);
+  [screens,healthEvents] = await Promise.all([listScreens(supabase),listHealthEvents(supabase)]);
   const grid = document.querySelector<HTMLElement>(".screen-grid");
   if (grid) grid.innerHTML = renderScreenCards();
 }
@@ -106,6 +108,8 @@ function renderScreenCards() {
   return screens.map((screen) => {
     const device = screen.devices?.find((item) => item.pairing_status === "PAIRED") ?? screen.devices?.[0];
     const paired = device?.pairing_status === "PAIRED";
+    const runtime=device?.runtime_status;
+    const health=diagnosticHealth(runtime);
     const presence = classifyPresence(device);
     const version = device?.app_version
       ? `<span>Player ${escape(device.app_version)}</span>`
@@ -116,11 +120,12 @@ function renderScreenCards() {
     const assigned = screen.playlist_assignment?.player_playlist_versions;
     const placeholder = assigned ? "" : `<option value="" selected disabled>${playlistVersions.length ? "Selecione uma versão" : "Nenhuma versão publicada"}</option>`;
     const options = placeholder + playlistVersions.map((version) => `<option value="${version.id}" ${assigned?.id === version.id ? "selected" : ""}>${escape(version.player_playlists?.name ?? "Playlist")} · v${version.version_number}</option>`).join("");
-    const actions=paired?`<section class="device-actions"><h4>Ações</h4><div><button class="secondary command-button" data-screen-id="${screen.id}" data-command="GET_STATUS">Atualizar status</button><button class="secondary command-button" data-screen-id="${screen.id}" data-command="SYNC_NOW">Sincronizar agora</button><button class="secondary command-button" data-screen-id="${screen.id}" data-command="RELOAD_PLAYLIST">Recarregar playlist</button></div><div class="command-history" data-screen-id="${screen.id}">${renderCommandHistory(screen.id)}</div></section>`:"";
+    const runtimeSummary=runtime?`<div class="runtime-summary"><span class="health health-${health.toLowerCase()}">${healthLabel(health)}</span><span>${runtime.playback_state==="PLAYING"?"Tocando":runtime.playback_state}</span><span>Sync: ${runtime.sync_state}</span><span>Livre: ${formatBytes(runtime.free_storage_bytes)}${isStorageLow(runtime)?" · BAIXO":""}</span></div>`:"";
+    const actions=paired?`<section class="device-actions"><h4>Ações</h4><div><button class="secondary diagnostic-button" data-device-id="${device!.id}">Diagnóstico</button><button class="secondary command-button" data-screen-id="${screen.id}" data-command="GET_STATUS">Atualizar status</button><button class="secondary command-button" data-screen-id="${screen.id}" data-command="SYNC_NOW">Sincronizar agora</button><button class="secondary command-button" data-screen-id="${screen.id}" data-command="RELOAD_PLAYLIST">Recarregar playlist</button></div><div class="command-history" data-screen-id="${screen.id}">${renderCommandHistory(screen.id)}</div></section>`:"";
     return `<article class="screen-card">
       <div><span class="status presence-${presence.toLowerCase()}">${presenceLabel(presence)}</span>
       <h3>${escape(screen.name)}</h3>
-      <p class="device-details">${version}${lastCommunication}<span>Vínculo: ${paired ? "PAIRED" : "SEM PLAYER"}</span></p></div>
+      <p class="device-details">${version}${lastCommunication}<span>Vínculo: ${paired ? "PAIRED" : "SEM PLAYER"}</span></p>${runtimeSummary}</div>
       <label class="playlist-assignment">Playlist publicada<select data-screen-id="${screen.id}" class="playlist-select" ${playlistVersions.length ? "" : "disabled"}>${options}</select></label>
       <button class="secondary pair-button" data-id="${screen.id}" ${paired ? "disabled" : ""}>
         ${paired ? "Player vinculado" : "Vincular Player"}
@@ -163,7 +168,9 @@ function bindScreensArea(){document.querySelector("#new-screen")!.addEventListen
         notice("Playlist da tela atualizada.", "success");
       } catch (error) { notice((error as Error).message); select.disabled = false; }
     },
-  });document.querySelector<HTMLElement>(".screen-grid")!.addEventListener("click",event=>{const button=(event.target as Element).closest<HTMLButtonElement>(".command-button");if(button?.dataset.screenId&&button.dataset.command)void sendCommand(button,button.dataset.screenId,button.dataset.command as PlayerCommandType);});}
+  });document.querySelector<HTMLElement>(".screen-grid")!.addEventListener("click",event=>{const target=event.target as Element;const diagnostic=target.closest<HTMLButtonElement>(".diagnostic-button");if(diagnostic?.dataset.deviceId){const device=screens.flatMap(s=>s.devices??[]).find(d=>d.id===diagnostic.dataset.deviceId);if(device)renderDiagnostic(device);return;}const button=target.closest<HTMLButtonElement>(".command-button");if(button?.dataset.screenId&&button.dataset.command)void sendCommand(button,button.dataset.screenId,button.dataset.command as PlayerCommandType);});}
+
+function renderDiagnostic(device:ScreenDevice){const r=device.runtime_status;const events=recentEvents(healthEvents,device.id,50);const row=(label:string,value:unknown)=>`<div><dt>${escape(label)}</dt><dd>${escape(String(value??"—"))}</dd></div>`;modal(`<div class="editor-heading"><div><h2>Diagnóstico</h2><p>Último estado operacional conhecido.</p></div><button class="secondary cancel">Fechar</button></div>${r?`<section class="diagnostic-health health-${diagnosticHealth(r).toLowerCase()}">${healthLabel(diagnosticHealth(r))}</section><dl class="diagnostic-grid">${row("Sessão",r.session_id)}${row("Uptime",formatUptime(r.uptime_ms))}${row("Memória disponível",formatBytes(r.available_memory_bytes)+(r.memory_low?" · BAIXA":""))}${row("Armazenamento",`${formatBytes(r.free_storage_bytes)} livres de ${formatBytes(r.total_storage_bytes)}`)}${row("Playback",r.playback_state)}${row("Cache",r.cache_state)}${row("Sync",r.sync_state)}${row("Playlist ACTIVE",r.active_playlist_id?`${r.active_playlist_id} · v${r.active_playlist_version??"—"}`:"—")}${row("Item atual",[r.current_item_id,r.current_content_kind,r.current_media_type].filter(Boolean).join(" · ")||"—")}${row("Último sync",r.last_sync_at?new Date(r.last_sync_at).toLocaleString("pt-BR"):"Nunca")}${row("Última comunicação",formatLastCommunication(r.last_seen_at))}${row("Último erro",r.last_error_summary?`${r.last_error_code??"ERRO"}: ${r.last_error_summary}`:"Nenhum")}${row("Versão",r.app_version)}</dl>`:`<div class="empty">O Player ainda não enviou diagnóstico.</div>`}<section class="health-history"><h3>Eventos recentes</h3>${events.map(e=>`<div class="health-event severity-${e.severity.toLowerCase()}"><span>${new Date(e.occurred_at).toLocaleString("pt-BR")}</span><strong>${escape(eventLabel(e.event_type))}</strong></div>`).join("")||`<small class="muted">Nenhum evento relevante.</small>`}</section>`);document.querySelector(".cancel")!.addEventListener("click",closeModal);}
 
 async function sendCommand(button:HTMLButtonElement,screenId:string,type:PlayerCommandType){if(type!=="GET_STATUS"&&!window.confirm(`Enviar “${COMMAND_LABELS[type]}” para esta tela?`))return;button.disabled=true;try{const created=await enqueuePlayerCommand(supabase,screenId,type);deviceCommands=[created,...deviceCommands];document.querySelector<HTMLElement>(`.command-history[data-screen-id="${screenId}"]`)!.innerHTML=renderCommandHistory(screenId);commandRefresh.start();notice("Comando enviado; aguardando o Player.","success");}catch(error){notice((error as Error).message);}finally{button.disabled=false;}}
 

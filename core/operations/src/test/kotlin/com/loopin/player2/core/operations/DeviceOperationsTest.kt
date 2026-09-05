@@ -54,11 +54,11 @@ class DeviceOperationsTest {
         assertEquals("heartbeat", payload.action)
         assertEquals("2.0.0", payload.appVersion)
         assertEquals(
-            setOf("connection", "playback_state", "cache_state", "health_state", "free_storage_bytes", "last_sync_epoch_ms"),
-            payload.metadata.keys,
+            setOf("uptime_ms","available_memory_bytes","memory_low","free_storage_bytes","total_storage_bytes","connection","playback_state","cache_state","sync_state","health_state","last_sync_epoch_ms","active_playlist_id","active_playlist_version","active_manifest_etag","previous_playlist_id","current_item_id","current_content_kind","current_media_type"),
+            payload.runtime.keys,
         )
-        assertEquals("ONLINE", payload.metadata["connection"])
-        assertEquals("PLAYING", payload.metadata["playback_state"])
+        assertEquals("ONLINE", payload.runtime["connection"])
+        assertEquals("PLAYING", payload.runtime["playback_state"])
     }
     @Test fun `heartbeat request uses bearer credential and redacts it from diagnostics`() {
         val secret = "s".repeat(43)
@@ -138,12 +138,15 @@ class DeviceOperationsTest {
         val low = health().copy(freeStorageBytes = 0, healthState = HealthState.DEGRADED, lastError = "Insufficient storage")
         assertEquals(HealthState.DEGRADED, low.healthState)
     }
+    @Test fun `process recreation produces a new diagnostic session id`() { val first=newPlayerSessionId();val second=newPlayerSessionId();assertTrue(first!=second);assertTrue(Regex("[0-9a-f-]{36}").matches(first)) }
+    @Test fun `runtime snapshot includes active metadata without technical identity`() { val value=DeviceRuntimeSnapshotFactory.create(health().copy(sessionId="session",activePlaylistId="playlist",activePlaylistVersion=4,currentItemId="item",currentContentKind="MEDIA",currentMediaType="VIDEO"));assertEquals("playlist",value["active_playlist_id"]);assertEquals(4L,value["active_playlist_version"]);assertNull(value["internal_id"]);assertNull(value["friendly_code"]) }
+    @Test fun `remote error summary is bounded and redacts secrets`() { val text="Bearer secret-token\nhttps://x.test?a=1&token=hidden "+"x".repeat(500);val safe=DeviceRuntimeSnapshotFactory.sanitizeError(text)!!;assertTrue(safe.length<=256);assertTrue("hidden" !in safe);assertTrue('\n' !in safe) }
 
     private fun health(
         connection: ConnectionStatus = ConnectionStatus.ONLINE,
         cache: CacheHealth = CacheHealth.OK,
     ) = DeviceHealthSnapshot("internal-uuid", "582731", 100, 10, 1_000, 2_000, 4_000,
-        connection, "2.0.0", PlayerOperationalState.PLAYING, cache, SyncHealth.OK, 90, null, HealthState.HEALTHY)
+        connection, "2.0.0", PlayerOperationalState.PLAYING, cache, SyncHealth.OK, 90, null, HealthState.HEALTHY,sessionId="session")
 
     private fun heartbeat() = LocalHeartbeatSource(DeviceHealthManager { health() }).create()
 

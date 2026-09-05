@@ -22,13 +22,7 @@ class SafeCommandExecutor(
     private val reloadPlaylist: () -> String,
 ) : CommandExecutor {
     override fun execute(command: RemoteCommand): CommandOutcome = when (command.type) {
-        CommandType.GET_STATUS -> CommandOutcome(CommandCompletionStatus.SUCCEEDED, status().let { health -> linkedMapOf(
-            "app_version" to health.appVersion.take(100), "connection" to health.connection.name,
-            "playback_state" to health.playbackState.name, "cache_state" to health.cacheState.name,
-            "sync_state" to health.syncState.name, "health_state" to health.healthState.name,
-            "free_storage_bytes" to health.freeStorageBytes.coerceAtLeast(0L),
-            "last_sync_epoch_ms" to health.lastSyncEpochMs,
-        ) })
+        CommandType.GET_STATUS -> CommandOutcome(CommandCompletionStatus.SUCCEEDED, DeviceRuntimeSnapshotFactory.create(status()))
         CommandType.SYNC_NOW -> action(syncNow())
         CommandType.RELOAD_PLAYLIST -> action(reloadPlaylist())
         else -> CommandOutcome(CommandCompletionStatus.FAILED, mapOf("code" to "unsupported"))

@@ -82,6 +82,32 @@ function heartbeatMetadata(value: unknown): Record<string, unknown> | null {
   return result;
 }
 
+const runtimeEnums: Record<string, string[]> = {
+  playback_state: ["PLAYING", "PAUSED", "ERROR", "OFFLINE", "IDLE"],
+  cache_state: ["OK", "INCOMPLETE", "ERROR"],
+  sync_state: ["OK", "SYNCING", "ERROR", "NEVER_SYNCED"],
+  health_state: ["HEALTHY", "DEGRADED", "ERROR"],
+};
+function runtimeSnapshot(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const source=value as Record<string,unknown>, result:Record<string,unknown>={};
+  for(const key of ["uptime_ms","available_memory_bytes","free_storage_bytes","total_storage_bytes"]){const v=source[key];if(typeof v!=="number"||!Number.isSafeInteger(v)||v<0)return null;result[key]=v;}
+  if(typeof source.memory_low!=="boolean")return null;result.memory_low=source.memory_low;
+  for(const [key,allowed] of Object.entries(runtimeEnums)){if(typeof source[key]!=="string"||!allowed.includes(source[key] as string))return null;result[key]=source[key];}
+  if(source.last_sync_epoch_ms===null||source.last_sync_epoch_ms===undefined)result.last_sync_epoch_ms=null;else if(typeof source.last_sync_epoch_ms==="number"&&Number.isSafeInteger(source.last_sync_epoch_ms)&&source.last_sync_epoch_ms>=0)result.last_sync_epoch_ms=source.last_sync_epoch_ms;else return null;
+  const optional:{[key:string]:[number,RegExp?]}={active_playlist_id:[100],active_manifest_etag:[64,/^[a-f0-9]{64}$/],previous_playlist_id:[100],current_item_id:[100],current_content_kind:[16,/^(MEDIA|DYNAMIC)$/],current_media_type:[16,/^(VIDEO|IMAGE|WEATHER)$/]};
+  for(const [key,[limit,pattern]] of Object.entries(optional)){const v=source[key];if(v===null||v===undefined)result[key]=null;else if(typeof v==="string"&&v.length<=limit&&(!pattern||pattern.test(v)))result[key]=v;else return null;}
+  const version=source.active_playlist_version;if(version===null||version===undefined)result.active_playlist_version=null;else if(typeof version==="number"&&Number.isSafeInteger(version)&&version>=0)result.active_playlist_version=version;else return null;
+  return result;
+}
+function safeLastError(value:unknown):Record<string,unknown>|null{
+  if(value===null||value===undefined)return null;if(!value||typeof value!=="object"||Array.isArray(value))return null;
+  const v=value as Record<string,unknown>;if(typeof v.summary!=="string"||v.summary.length>512||typeof v.code!=="string"||v.code.length>64)return null;
+  const summary=v.summary.replace(/(bearer\s+|token[=: ]+|key[=: ]+|https?:\/\/\S*[?&](token|key|signature)=)\S+/gi,"[redacted]").replace(/[\r\n\t]+/g," ").trim().slice(0,256);
+  const at=v.at_epoch_ms;if(at!==null&&at!==undefined&&(typeof at!=="number"||!Number.isSafeInteger(at)||at<0))return null;
+  return summary?{code:v.code,summary,at_epoch_ms:at??null}:null;
+}
+
 async function authenticatedUser(req: Request) {
   const token = bearer(req);
   if (!token) return null;
@@ -264,6 +290,14 @@ async function heartbeat(req: Request, body: Record<string, unknown>): Promise<R
     .maybeSingle();
   if (error || !stored) return json(401, { error: "invalid_device_credential" });
 
+  const runtime=runtimeSnapshot(body.runtime);const sessionId=typeof body.session_id==="string"?body.session_id:"";
+  if("runtime" in body&&!runtime)return json(400,{error:"invalid_runtime"});
+  if(runtime){
+    if(sessionId.length<1||sessionId.length>64||typeof body.app_version!=="string"||body.app_version.length<1||body.app_version.length>100)return json(400,{error:"invalid_runtime"});
+    const lastError=safeLastError(body.last_error);if(body.last_error!==null&&body.last_error!==undefined&&!lastError)return json(400,{error:"invalid_last_error"});
+    const{error:runtimeError}=await service.rpc("record_device_runtime_status",{p_device_id:stored.device_id,p_runtime:runtime,p_session_id:sessionId,p_app_version:body.app_version,p_last_error:lastError});
+    if(runtimeError)return json(400,{error:"invalid_runtime"});return json(200,{ok:true,server_time:new Date().toISOString()});
+  }
   const now = new Date().toISOString();
   const update: Record<string, unknown> = { last_seen_at: now, updated_at: now };
   if (typeof body.app_version === "string") update.app_version = body.app_version.slice(0, 100);

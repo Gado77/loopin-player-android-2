@@ -58,7 +58,7 @@ class MainActivity : Activity() {
         setContentView(createPlaybackScreen())
         stateSubscription = container.stateManager.subscribe(::renderDeviceState)
         playlistActivationSubscription = container.playlistActivationNotifier.subscribe { playlist ->
-            runOnUiThread { (playbackEngine as? LoopingPlaybackEngine)?.replaceAfterCurrent(playlist) }
+            runOnUiThread { container.operationalState.playlist(playlist);(playbackEngine as? LoopingPlaybackEngine)?.replaceAfterCurrent(playlist) }
         }
         dynamicContent?.start()
         if (!isPaired()) startPairing()
@@ -150,6 +150,7 @@ class MainActivity : Activity() {
         container.playlistRepository.loadActivePlaylistAsync { playlist ->
             runOnUiThread {
                 if (playbackEngine === engine) {
+                    container.operationalState.playlist(playlist)
                     engine.load(playlist)
                     engine.start()
                 }
@@ -288,6 +289,7 @@ class MainActivity : Activity() {
     private fun renderPlaybackState(snapshot: PlaybackSnapshot) {
         runOnUiThread {
             latestPlayback = snapshot
+            container.operationalState.currentItem(snapshot.currentItemId)
             container.operationalState.playback(snapshot.state, snapshot.lastError)
             if (snapshot.currentItemId != null && snapshot.currentItemId != lastLoggedItemId) {
                 lastLoggedItemId = snapshot.currentItemId

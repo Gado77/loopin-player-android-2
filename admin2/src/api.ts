@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { DeviceCommand, DraftItem, MediaAsset, PairingProof, PairingResult, PlayerCommandType, Playlist, PlaylistVersion, Screen } from "./types";
+import type { DeviceCommand, DeviceHealthEvent, DraftItem, MediaAsset, PairingProof, PairingResult, PlayerCommandType, Playlist, PlaylistVersion, Screen } from "./types";
 import { hashFile, safeExtension, validateMediaFile } from "./media";
 import { pairingErrorMessage } from "./pairing";
 
@@ -17,7 +17,7 @@ export async function logout(client: SupabaseClient) {
 export async function listScreens(client: SupabaseClient): Promise<Screen[]> {
   const { data, error } = await client
     .from("screens")
-    .select("id, owner_id, name, status, created_at, devices(id, pairing_status, last_seen_at, app_version, metadata), playlist_assignment:screen_playlist_assignments(playlist_version_id, assigned_at, player_playlist_versions(id, playlist_id, version_number, manifest_sha256, published_at, player_playlists(id, name)))")
+    .select("id, owner_id, name, status, created_at, devices(id, pairing_status, last_seen_at, app_version, metadata, runtime_status:device_runtime_status(device_id,screen_id,last_seen_at,session_id,app_version,uptime_ms,available_memory_bytes,memory_low,free_storage_bytes,total_storage_bytes,playback_state,cache_state,sync_state,health_state,last_sync_at,last_error_code,last_error_summary,last_error_at,active_playlist_id,active_playlist_version,active_manifest_etag,previous_playlist_id,current_item_id,current_content_kind,current_media_type,updated_at)), playlist_assignment:screen_playlist_assignments(playlist_version_id, assigned_at, player_playlist_versions(id, playlist_id, version_number, manifest_sha256, published_at, player_playlists(id, name)))")
     .order("created_at", { ascending: false });
   if (error) throw new Error("Não foi possível carregar suas telas.");
   return (data ?? []) as unknown as Screen[];
@@ -58,6 +58,7 @@ export async function createPlaylist(client:SupabaseClient,ownerId:string,name:s
 export async function savePlaylistDraft(client:SupabaseClient,playlistId:string,items:DraftItem[]){const {data,error}=await client.rpc("save_player_playlist_draft",{p_playlist_id:playlistId,p_items:items});if(error)throw new Error("Não foi possível salvar o rascunho.");return data;}
 export async function publishPlaylistDraft(client:SupabaseClient,playlistId:string):Promise<PlaylistVersion>{const {data,error}=await client.rpc("publish_player_playlist_draft",{p_playlist_id:playlistId});if(error)throw new Error("Não foi possível publicar o rascunho.");return data as PlaylistVersion;}
 export async function listRecentCommands(client:SupabaseClient):Promise<DeviceCommand[]>{const{data,error}=await client.from("device_commands").select("id,screen_id,device_id,command_type,status,created_at,delivered_at,completed_at,expires_at,result").order("created_at",{ascending:false}).limit(50);if(error)throw new Error("Não foi possível carregar os comandos.");return(data??[]) as DeviceCommand[];}
+export async function listHealthEvents(client:SupabaseClient):Promise<DeviceHealthEvent[]>{const{data,error}=await client.from("device_health_events").select("id,device_id,screen_id,event_type,severity,occurred_at,metadata").order("occurred_at",{ascending:false}).limit(50);if(error)throw new Error("Não foi possível carregar o histórico de diagnóstico.");return(data??[]) as DeviceHealthEvent[];}
 export async function enqueuePlayerCommand(client:SupabaseClient,screenId:string,commandType:PlayerCommandType):Promise<DeviceCommand>{const{data,error}=await client.rpc("enqueue_player_command",{p_screen_id:screenId,p_command_type:commandType,p_payload:null});if(error||!data)throw new Error("Não foi possível enviar o comando.");return data as DeviceCommand;}
 
 export async function pairPlayer(

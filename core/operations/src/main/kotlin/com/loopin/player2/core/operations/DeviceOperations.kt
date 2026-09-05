@@ -2,6 +2,9 @@ package com.loopin.player2.core.operations
 
 import com.loopin.player2.core.model.DeviceIdentity
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.UUID
+
+fun newPlayerSessionId(): String = UUID.randomUUID().toString()
 
 enum class PairingState { UNPAIRED, PAIRING, PAIRED, PAIRING_ERROR }
 
@@ -76,6 +79,17 @@ data class DeviceHealthSnapshot(
     val lastSyncEpochMs: Long?,
     val lastError: String?,
     val healthState: HealthState,
+    val sessionId: String = "unknown",
+    val memoryLow: Boolean = false,
+    val activePlaylistId: String? = null,
+    val activePlaylistVersion: Long? = null,
+    val activeManifestEtag: String? = null,
+    val previousPlaylistId: String? = null,
+    val currentItemId: String? = null,
+    val currentContentKind: String? = null,
+    val currentMediaType: String? = null,
+    val lastErrorCode: String? = null,
+    val lastErrorAtEpochMs: Long? = null,
 )
 
 fun interface DeviceHealthCollector { fun collect(): DeviceHealthSnapshot }
@@ -86,45 +100,67 @@ class DeviceHealthManager(private val collector: DeviceHealthCollector) {
     fun lastSnapshot(): DeviceHealthSnapshot? = last
 }
 
-data class DeviceHeartbeat(
-    val deviceCode: String,
-    val timestampEpochMs: Long,
-    val appVersion: String,
-    val connection: ConnectionStatus,
-    val playbackState: PlayerOperationalState,
-    val cacheState: CacheHealth,
-    val freeStorageBytes: Long,
-    val lastSyncEpochMs: Long?,
-    val healthState: HealthState,
-)
+data class DeviceHeartbeat(val snapshot: DeviceHealthSnapshot) {
+    val deviceCode get() = snapshot.friendlyCode
+    val timestampEpochMs get() = snapshot.collectedAtEpochMs
+    val appVersion get() = snapshot.appVersion
+}
 
 fun interface HeartbeatSource { fun create(): DeviceHeartbeat }
 
 class LocalHeartbeatSource(private val healthManager: DeviceHealthManager) : HeartbeatSource {
-    override fun create(): DeviceHeartbeat = healthManager.collectNow().let {
-        DeviceHeartbeat(it.friendlyCode, it.collectedAtEpochMs, it.appVersion, it.connection,
-            it.playbackState, it.cacheState, it.freeStorageBytes, it.lastSyncEpochMs, it.healthState)
-    }
+    override fun create(): DeviceHeartbeat = DeviceHeartbeat(healthManager.collectNow())
 }
 
 data class DeviceHeartbeatPayload(
     val action: String = "heartbeat",
     val appVersion: String,
-    val metadata: Map<String, Any?>,
+    val sessionId: String,
+    val runtime: Map<String, Any?>,
+    val lastError: Map<String, Any?>?,
 )
 
-object DeviceHeartbeatPayloadFactory {
-    fun create(heartbeat: DeviceHeartbeat): DeviceHeartbeatPayload = DeviceHeartbeatPayload(
-        appVersion = heartbeat.appVersion.take(100),
-        metadata = linkedMapOf(
-            "connection" to heartbeat.connection.name,
-            "playback_state" to heartbeat.playbackState.name,
-            "cache_state" to heartbeat.cacheState.name,
-            "health_state" to heartbeat.healthState.name,
-            "free_storage_bytes" to heartbeat.freeStorageBytes.coerceAtLeast(0L),
-            "last_sync_epoch_ms" to heartbeat.lastSyncEpochMs,
-        ),
+object DeviceRuntimeSnapshotFactory {
+    private val TOKEN = Regex("(?i)(bearer\\s+|token[=: ]+|key[=: ]+|https?://\\S*[?&](token|key|signature)=)\\S+")
+    fun create(snapshot: DeviceHealthSnapshot): Map<String, Any?> = linkedMapOf(
+        "app_version" to snapshot.appVersion.take(100),
+        "session_id" to snapshot.sessionId.take(64),
+        "uptime_ms" to snapshot.uptimeMs.coerceAtLeast(0L),
+        "available_memory_bytes" to snapshot.availableMemoryBytes.coerceAtLeast(0L),
+        "memory_low" to snapshot.memoryLow,
+        "free_storage_bytes" to snapshot.freeStorageBytes.coerceAtLeast(0L),
+        "total_storage_bytes" to snapshot.totalStorageBytes.coerceAtLeast(0L),
+        "connection" to snapshot.connection.name,
+        "playback_state" to snapshot.playbackState.name,
+        "cache_state" to snapshot.cacheState.name,
+        "sync_state" to snapshot.syncState.name,
+        "health_state" to snapshot.healthState.name,
+        "last_sync_epoch_ms" to snapshot.lastSyncEpochMs,
+        "active_playlist_id" to snapshot.activePlaylistId?.take(100),
+        "active_playlist_version" to snapshot.activePlaylistVersion,
+        "active_manifest_etag" to snapshot.activeManifestEtag?.take(64),
+        "previous_playlist_id" to snapshot.previousPlaylistId?.take(100),
+        "current_item_id" to snapshot.currentItemId?.take(100),
+        "current_content_kind" to snapshot.currentContentKind?.take(16),
+        "current_media_type" to snapshot.currentMediaType?.take(16),
+        "last_error_code" to snapshot.lastErrorCode?.take(64),
+        "last_error_summary" to sanitizeError(snapshot.lastError),
+        "last_error_at_epoch_ms" to snapshot.lastErrorAtEpochMs,
     )
+    fun sanitizeError(value: String?): String? = value?.replace(TOKEN, "[redacted]")
+        ?.replace(Regex("[\\r\\n\\t]+"), " ")?.trim()?.take(256)?.takeIf(String::isNotEmpty)
+}
+
+object DeviceHeartbeatPayloadFactory {
+    fun create(heartbeat: DeviceHeartbeat): DeviceHeartbeatPayload {
+        val snapshot = heartbeat.snapshot
+        val full = DeviceRuntimeSnapshotFactory.create(snapshot)
+        val error = full["last_error_summary"]?.let { mapOf(
+            "code" to full["last_error_code"], "summary" to it, "at_epoch_ms" to full["last_error_at_epoch_ms"],
+        ) }
+        return DeviceHeartbeatPayload(appVersion = snapshot.appVersion.take(100),
+            sessionId = snapshot.sessionId.take(64), runtime = full - setOf("app_version", "session_id", "last_error_code", "last_error_summary", "last_error_at_epoch_ms"), lastError = error)
+    }
 }
 
 class DeviceHeartbeatRequest private constructor(

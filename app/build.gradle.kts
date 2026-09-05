@@ -13,7 +13,7 @@ android {
         minSdk = 21
         targetSdk = 36
         versionCode = 1
-        versionName = "2.0.0-phase11-remote-commands"
+        versionName = "2.0.0-phase12-diagnostics"
         buildConfigField("String", "PAIRING_ENDPOINT", "\"https://zdhsfirabkmivuzwyids.supabase.co/functions/v1/device-pairing\"")
         buildConfigField("String", "MANIFEST_ENDPOINT", "\"https://zdhsfirabkmivuzwyids.supabase.co/functions/v1/player-manifest\"")
         buildConfigField("String", "MEDIA_ENDPOINT", "\"https://zdhsfirabkmivuzwyids.supabase.co/functions/v1/player-media\"")

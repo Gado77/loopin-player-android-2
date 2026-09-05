@@ -144,7 +144,8 @@ data class AppContainer(
             )
             val syncScheduler = ContentSyncScheduler(application, syncConfig, logger)
             val pairing = DevicePairingManager(AndroidPairingStore(application))
-            val health = DeviceHealthManager(AndroidDeviceHealthCollector(application, config.identity, stateManager, operationalState, transactionalStore))
+            val sessionId = newPlayerSessionId()
+            val health = DeviceHealthManager(AndroidDeviceHealthCollector(application, config.identity, stateManager, operationalState, transactionalStore, sessionId))
             val heartbeatSource = LocalHeartbeatSource(health)
             val heartbeatScheduler = DeviceHeartbeatScheduler(application, logger)
             val heartbeatDispatcher = DeviceHeartbeatDispatcher(

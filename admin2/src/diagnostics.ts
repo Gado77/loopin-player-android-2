@@ -1,0 +1,9 @@
+import type { DeviceHealthEvent, DeviceRuntimeStatus } from "./types";
+export type DiagnosticHealth="HEALTHY"|"DEGRADED"|"ERROR"|"UNKNOWN";
+export const diagnosticHealth=(runtime?:DeviceRuntimeStatus|null):DiagnosticHealth=>runtime?.health_state??"UNKNOWN";
+export const healthLabel=(health:DiagnosticHealth)=>({HEALTHY:"SAUDÁVEL",DEGRADED:"ATENÇÃO",ERROR:"ERRO",UNKNOWN:"SEM DIAGNÓSTICO"})[health];
+export function formatBytes(bytes:number|null|undefined){if(bytes==null)return"—";const unit=bytes>=1073741824?[1073741824,"GB"] as const:[1048576,"MB"] as const;return`${(bytes/unit[0]).toLocaleString("pt-BR",{maximumFractionDigits:1})} ${unit[1]}`;}
+export function formatUptime(ms:number|null|undefined){if(ms==null)return"—";const minutes=Math.floor(ms/60000),days=Math.floor(minutes/1440),hours=Math.floor(minutes%1440/60),mins=minutes%60;return days?`${days}d ${hours}h`:hours?`${hours}h ${mins}min`:`${mins}min`;}
+export const isStorageLow=(runtime?:DeviceRuntimeStatus|null)=>!!runtime&&(runtime.free_storage_bytes<524288000||(runtime.total_storage_bytes>0&&runtime.free_storage_bytes/runtime.total_storage_bytes<.1));
+export const recentEvents=(events:DeviceHealthEvent[],deviceId:string,limit=50)=>events.filter(e=>e.device_id===deviceId).slice(0,Math.min(limit,50));
+export const eventLabel=(type:string)=>({PLAYER_SESSION_STARTED:"Sessão do Player iniciada",HEALTH_DEGRADED:"Saúde degradada",HEALTH_RECOVERED:"Saúde recuperada",PLAYBACK_ERROR:"Erro de reprodução",PLAYBACK_RECOVERED:"Reprodução recuperada",SYNC_FAILED:"Sincronização falhou",SYNC_RECOVERED:"Sincronização recuperada",CACHE_ERROR:"Erro de cache",CACHE_RECOVERED:"Cache recuperado",LOW_STORAGE:"Armazenamento baixo",STORAGE_RECOVERED:"Armazenamento recuperado",LOW_MEMORY:"Memória baixa",MEMORY_RECOVERED:"Memória recuperada"} as Record<string,string>)[type]??type;

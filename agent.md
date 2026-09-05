@@ -1,6 +1,6 @@
 # Loopin Player 2.0 — Documento mestre da reconstrução
 
-> Última atualização: 01/09/2026 — estado implementado até a Fase 9.1.
+> Última atualização: 05/09/2026 — estado implementado até a Fase 12.
 >
 > Este arquivo é o ponto de entrada para qualquer pessoa ou agente que continue o trabalho. Ele descreve o que existe, por que existe, como validar e, principalmente, o que ainda **não** existe. Consulte também os documentos em `docs/` para auditorias e resultados detalhados de cada fase.
 
@@ -33,7 +33,7 @@ Nunca alterar como consequência deste projeto:
 Identidade Android atual:
 
 - applicationId: `com.loopin.player2`;
-- versão: `2.0.0-phase9.1-remote-sync`;
+- versão: `2.0.0-phase12-diagnostics`;
 - versionCode: `1`;
 - minSdk: 21;
 - targetSdk/compileSdk: 36;
@@ -1113,3 +1113,13 @@ Comandos remotos seguros agora são operacionais no Admin 2, backend isolado e P
 O Admin só cria comandos para telas próprias via RPC, mostra os últimos cinco resultados e mantém polling de 12 segundos apenas enquanto existe comando pendente. RLS/cross-device, TTL de 15 minutos, claim transacional, completion idempotente, backoff e resultados limitados foram validados no Supabase real isolado. No LDPlayer, os três comandos concluíram, sync/reload preservaram o playback, replay e reboot não repetiram a ação e o conteúdo continuou offline. O parser Android aceita os microssegundos reais dos timestamps Supabase.
 
 Continuam proibidos/não implementados: `RESTART_PLAYER`, `CLEAR_CACHE`, `CHECK_UPDATE`, `REBOOT_DEVICE`, `CAPTURE_SCREENSHOT`, shell, ação arbitrária, OTA, Realtime e controle de firmware. Certificação e soak test na MXQ permanecem pendentes. Documento autoritativo: `docs/PHASE11_SAFE_REMOTE_COMMANDS.md`.
+
+# Estado atual — Fase 12 (2026-09-05)
+
+O heartbeat autenticado existente agora transporta diagnóstico operacional leve, sem scheduler novo. `DeviceHealthSnapshot` é a fonte única para o snapshot periódico e `GET_STATUS`: sessão efêmera, uptime, memória/pressão, storage, playback/cache/sync/health, ACTIVE/PREVIOUS, item atual e último erro sanitizado.
+
+O Supabase isolado mantém uma linha corrente em `device_runtime_status` e transições relevantes em `device_health_events`. O backend evita eventos HEALTHY repetidos, detecta nova sessão, degradação/recuperação, erros de playback/sync/cache e baixa memória/storage. Retenção oportunística: 30 dias e máximo 100 eventos por device. Admin/anon não escrevem; RLS isola status e eventos por proprietário.
+
+O Admin 2 exibe saúde no card e painel Diagnóstico responsivo com até 50 eventos recentes. O LDPlayer validou heartbeat/GET_STATUS coerentes, ACTIVE, reboot com nova sessão e pairing preservado, além de playback offline. A validação real do Supabase cobriu transições, deduplicação, RLS, sanitização e revogação. Detalhes autoritativos: `docs/PHASE12_REMOTE_DIAGNOSTICS.md`.
+
+Permanecem fora de escopo logs remotos, proof-of-play, analytics, alertas, Realtime, comandos destrutivos, OTA, shell/MDM e firmware. Certificação física e soak test na MXQ continuam pendentes.

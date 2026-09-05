@@ -7,7 +7,7 @@ import kotlin.test.*
 class RemoteCommandsTest {
     private val health = DeviceHealthSnapshot("internal","582731",1,2,3,4,5,ConnectionStatus.ONLINE,"2.0",PlayerOperationalState.PLAYING,CacheHealth.OK,SyncHealth.OK,6,null,HealthState.HEALTHY)
     private fun command(type:CommandType=CommandType.GET_STATUS,id:String="c1",expires:Long=2_000)=RemoteCommand(id,type,0,expires)
-    @Test fun `GET_STATUS returns limited health fields`() { val r=SafeCommandExecutor({health},{"scheduled"},{"reloaded"}).execute(command());assertEquals(CommandCompletionStatus.SUCCEEDED,r.status);assertEquals(setOf("app_version","connection","playback_state","cache_state","sync_state","health_state","free_storage_bytes","last_sync_epoch_ms"),r.result.keys);assertNull(r.result["internal_id"]) }
+    @Test fun `GET_STATUS returns the shared limited runtime snapshot`() { val r=SafeCommandExecutor({health},{"scheduled"},{"reloaded"}).execute(command());assertEquals(CommandCompletionStatus.SUCCEEDED,r.status);assertEquals(DeviceRuntimeSnapshotFactory.create(health),r.result);assertNull(r.result["internal_id"]);assertTrue("uptime_ms" in r.result) }
     @Test fun `SYNC_NOW schedules without waiting`()=assertEquals(mapOf("code" to "scheduled"),SafeCommandExecutor({health},{"scheduled"},{"reloaded"}).execute(command(CommandType.SYNC_NOW)).result)
     @Test fun `SYNC_NOW reports already running`()=assertEquals("already_running",SafeCommandExecutor({health},{"already_running"},{"reloaded"}).execute(command(CommandType.SYNC_NOW)).result["code"])
     @Test fun `RELOAD_PLAYLIST reloads safely`()=assertEquals(mapOf("code" to "reloaded"),SafeCommandExecutor({health},{"scheduled"},{"reloaded"}).execute(command(CommandType.RELOAD_PLAYLIST)).result)
