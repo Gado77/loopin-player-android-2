@@ -27,6 +27,7 @@ header { height: 68px; display: flex; align-items: center; justify-content: spac
 .screen-grid { display: grid; gap: 14px; margin-top: 30px; }
 .screen-card { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 18px; padding: 22px; border: 1px solid #1b334e; border-radius: 14px; background: #0b1929; }
 .screen-card h3 { margin: 9px 0 4px; }
+.ota-status{display:flex;flex-direction:column;gap:5px;margin-top:12px;padding:12px;border:1px solid #244461;border-radius:10px}.ota-status span,.ota-status small{color:#9eb0c2}.ota-status button{align-self:flex-start;margin-top:5px}
 .screen-card p { margin: 0; font-size: .8rem; }
 .status { display: inline-block; border-radius: 20px; padding: 4px 8px; font-size: .7rem; font-weight: 800; letter-spacing: .08em; }
 .presence-online { color: #75f2b2; background: #0e3a2a; }

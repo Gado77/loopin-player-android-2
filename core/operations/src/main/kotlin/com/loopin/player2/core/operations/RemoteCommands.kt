@@ -21,16 +21,18 @@ class SafeCommandExecutor(
     private val syncNow: () -> String,
     private val reloadPlaylist: () -> String,
     private val checkUpdate: () -> String = { "unsupported" },
+    private val installUpdate: () -> String = { "unsupported" },
 ) : CommandExecutor {
     override fun execute(command: RemoteCommand): CommandOutcome = when (command.type) {
         CommandType.GET_STATUS -> CommandOutcome(CommandCompletionStatus.SUCCEEDED, DeviceRuntimeSnapshotFactory.create(status()))
         CommandType.SYNC_NOW -> action(syncNow())
         CommandType.RELOAD_PLAYLIST -> action(reloadPlaylist())
         CommandType.CHECK_UPDATE -> action(checkUpdate())
+        CommandType.INSTALL_UPDATE -> action(installUpdate())
         else -> CommandOutcome(CommandCompletionStatus.FAILED, mapOf("code" to "unsupported"))
     }
     private fun action(code: String) = CommandOutcome(
-        if (code.lowercase() in setOf("scheduled", "already_running", "already_checking", "reloaded", "up_to_date", "update_available", "download_started")) CommandCompletionStatus.SUCCEEDED else CommandCompletionStatus.FAILED,
+        if (code.lowercase() in setOf("scheduled", "already_running", "already_checking", "reloaded", "up_to_date", "update_available", "download_started", "install_request_accepted", "user_action_required", "install_already_running")) CommandCompletionStatus.SUCCEEDED else CommandCompletionStatus.FAILED,
         mapOf("code" to code.take(64)),
     )
 }

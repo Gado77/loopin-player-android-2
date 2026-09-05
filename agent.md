@@ -1,6 +1,6 @@
 # Loopin Player 2.0 — Documento mestre da reconstrução
 
-> Última atualização: 05/09/2026 — estado implementado até a Fase 13.
+> Última atualização: 05/09/2026 — estado implementado até a Fase 14.
 >
 > Este arquivo é o ponto de entrada para qualquer pessoa ou agente que continue o trabalho. Ele descreve o que existe, por que existe, como validar e, principalmente, o que ainda **não** existe. Consulte também os documentos em `docs/` para auditorias e resultados detalhados de cada fase.
 
@@ -33,8 +33,8 @@ Nunca alterar como consequência deste projeto:
 Identidade Android atual:
 
 - applicationId: `com.loopin.player2`;
-- versão: `2.0.0-phase13-ota`;
-- versionCode: `13` (monotônico a partir desta fase);
+- versão: `2.0.0-phase14-update-install`;
+- versionCode: `14` (monotônico);
 - minSdk: 21;
 - targetSdk/compileSdk: 36;
 - orientação: landscape;
@@ -1039,6 +1039,7 @@ Ao concluir:
 - `docs/PHASE8_1_SECURE_PAIRING.md`: contrato e implementação implantada do pareamento rotativo por código/QR.
 - `docs/PHASE8_2_MINIMAL_ADMIN_PAIRING.md`: Admin 2.0 mínimo, autenticação, telas e validação real do pareamento no LDPlayer.
 - `docs/PHASE8_3_DEVICE_PRESENCE.md`: heartbeat autenticado, presença no Admin, segurança, backoff e validações.
+- `docs/PHASE14_OTA_INSTALL_AND_RECOVERY.md`: PackageInstaller, autorização, tentativa persistida e recuperação pós-update.
 
 ## 29. Fonte de verdade
 
@@ -1125,3 +1126,11 @@ O Supabase isolado mantém uma linha corrente em `device_runtime_status` e trans
 O Admin 2 exibe saúde no card e painel Diagnóstico responsivo com até 50 eventos recentes. O LDPlayer validou heartbeat/GET_STATUS coerentes, ACTIVE, reboot com nova sessão e pairing preservado, além de playback offline. A validação real do Supabase cobriu transições, deduplicação, RLS, sanitização e revogação. Detalhes autoritativos: `docs/PHASE12_REMOTE_DIAGNOSTICS.md`.
 
 Permanecem fora de escopo logs remotos, proof-of-play, analytics, alertas, Realtime, comandos destrutivos, OTA, shell/MDM e firmware. Certificação física e soak test na MXQ continuam pendentes.
+
+# Estado atual — Fase 14 (2026-09-05)
+
+OTA não termina mais em READY. `INSTALL_UPDATE` é um comando seguro sem payload que instala exclusivamente o APK preparado, após revalidação local e `authorize_install` autenticado. O Android usa `PackageInstaller.Session` com streaming/fsync, trata unknown sources, confirmação oficial, cancelamento e falhas. Device Owner só é indicado por `DevicePolicyManager`; não existe privilégio presumido.
+
+Artefato preparado e tentativa sobrevivem ao processo. `MY_PACKAGE_REPLACED` e o startup detectam a target version e verificam identidade, pairing/credential e store transacional antes de antecipar o heartbeat. O Supabase isolado mantém histórico RLS em `device_update_attempts`; o Admin mostra capacidade/estado e permite uma tela por vez.
+
+A migration e as Edge Functions foram implantadas no Supabase isolado. Suítes/builds passaram e o APK v14 iniciou no LDPlayer preservando os stores existentes. O E2E remoto v14→v15 e a confirmação/cancelamento reais do PackageInstaller continuam pendentes por ausência de `release_admin` LAB, inspector token e signing LAB provisionados nesta rodada. A chave RELEASE/STABLE definitiva e a capacidade gerenciada da MXQ também continuam pendentes. Documento autoritativo: `docs/PHASE14_OTA_INSTALL_AND_RECOVERY.md`.

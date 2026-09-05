@@ -12,6 +12,8 @@ import com.loopin.player2.core.model.NormalMediaContent
 import com.loopin.player2.core.model.Playlist
 import com.loopin.player2.core.operations.*
 import com.loopin.player2.core.playback.PlaybackState
+import com.loopin.player2.core.sync.UpdateInstallAttemptStore
+import com.loopin.player2.core.sync.UpdateInstallationState
 
 class OperationalStateRegistry(context: Context) {
     private val preferences = context.getSharedPreferences("loopin_operational_state", Context.MODE_PRIVATE)
@@ -93,6 +95,8 @@ class AndroidDeviceHealthCollector(
     private val store: TransactionalPlaylistStore,
     private val sessionId: String,
     private val updateManager: OperationalUpdateManager,
+    private val updateAttemptStore: UpdateInstallAttemptStore? = null,
+    private val installationCapability: () -> String = { "UNKNOWN" },
 ) : DeviceHealthCollector {
     override fun collect(): DeviceHealthSnapshot {
         val memory = ActivityManager.MemoryInfo().also {
@@ -110,6 +114,7 @@ class AndroidDeviceHealthCollector(
             operational.cacheState != CacheHealth.OK || operational.syncState == SyncHealth.ERROR || memory.lowMemory || storageLow -> HealthState.DEGRADED
             else -> HealthState.HEALTHY
         }
+        val attempt=updateAttemptStore?.load()
         return DeviceHealthSnapshot(identity.internalId, identity.friendlyCode, System.currentTimeMillis(),
             SystemClock.elapsedRealtime(), memory.availMem, storage.availableBytes, storage.totalBytes,
             if (online) ConnectionStatus.ONLINE else ConnectionStatus.OFFLINE, BuildConfig.VERSION_NAME,
@@ -120,6 +125,9 @@ class AndroidDeviceHealthCollector(
             operational.currentMediaType, operational.lastErrorCode, operational.lastErrorAtEpochMs,
             updateManager.snapshot().channel.name, BuildConfig.VERSION_CODE.toLong(), updateManager.snapshot().state.name,
             updateManager.snapshot().availableVersionCode, updateManager.snapshot().preparedVersionCode,
-            updateManager.snapshot().lastCheckEpochMs, updateManager.snapshot().lastError, "INTERACTIVE")
+            updateManager.snapshot().lastCheckEpochMs, updateManager.snapshot().lastError, installationCapability(),
+            attempt?.state?.name, attempt?.startedAtEpochMs,
+            attempt?.state?.takeIf { it==UpdateInstallationState.POST_UPDATE_VERIFYING || it==UpdateInstallationState.INSTALLED || it==UpdateInstallationState.UPDATE_RECOVERY_REQUIRED }?.name,
+            attempt?.failureCode)
     }
 }

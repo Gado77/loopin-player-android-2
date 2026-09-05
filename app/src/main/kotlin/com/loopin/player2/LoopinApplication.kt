@@ -23,6 +23,7 @@ import com.loopin.player2.core.sync.AuthenticatedRemoteMediaSourceFactory
 import com.loopin.player2.core.sync.LocalManifestSource
 import com.loopin.player2.core.sync.SyncEventSink
 import com.loopin.player2.core.sync.SyncManager
+import com.loopin.player2.core.sync.*
 import com.loopin.player2.core.operations.*
 
 class LoopinApplication : Application(), Application.ActivityLifecycleCallbacks {
@@ -55,6 +56,12 @@ class LoopinApplication : Application(), Application.ActivityLifecycleCallbacks 
             container.syncScheduler?.schedule(0)
             container.commandScheduler.schedule()
             container.updateScheduler.schedule()
+            container.updateAttemptStore.load()?.let { attempt ->
+                if (attempt.state == UpdateInstallationState.POST_UPDATE_VERIFYING) {
+                    container.updateSource.reportInstall(attempt)
+                    container.heartbeatScheduler.schedule()
+                }
+            }
         }
         container.telemetry.record(TelemetryEvent("foundation_started", System.currentTimeMillis()))
         container.logger.log(LogLevel.INFO, TAG, OperationalLogEvent.DEVICE_STARTED)
@@ -116,6 +123,9 @@ data class AppContainer(
     val updateManager: OperationalUpdateManager,
     val updateCoordinator: UpdateCoordinator,
     val updateScheduler: DeviceUpdateScheduler,
+    val updateInstallCoordinator: UpdateInstallCoordinator,
+    val updateAttemptStore: UpdateInstallAttemptStore,
+    val updateSource: AuthenticatedPlayerUpdateSource,
     val operationalState: OperationalStateRegistry,
 ) {
     companion object {
@@ -149,8 +159,27 @@ data class AppContainer(
             val syncScheduler = ContentSyncScheduler(application, syncConfig, logger)
             val pairing = DevicePairingManager(AndroidPairingStore(application))
             val updateState = OperationalUpdateManager(AndroidUpdateSettingsStore(application), BuildConfig.VERSION_NAME)
+            val updateScheduler = DeviceUpdateScheduler(application)
+            val updateSource = AuthenticatedPlayerUpdateSource(BuildConfig.UPDATE_ENDPOINT, credentialStore::credential, BuildConfig.VERSION_CODE.toLong()) { channel -> runCatching { updateState.setChannel(UpdateChannel.valueOf(channel)) } }
+            val platformInstaller=AndroidPackageUpdateInstaller(application)
+            val attemptStore=SharedPreferencesUpdateAttemptStore(application)
+            val preparedStore=SharedPreferencesPreparedUpdateStore(application)
+            val apkManager = PlayerUpdateManager(updateSource, updateSource,
+                object:PlayerInstaller{override fun availability()=InstallerAvailability.REQUIRES_USER_ACTION;override fun install(apk:java.io.File)=InstallationResult.UserActionRequired},
+                AndroidApkSignatureVerifier(application), java.io.File(application.filesDir,"updates"), installedVersionCode=BuildConfig.VERSION_CODE.toLong(),
+                preparedStore=preparedStore)
+            preparedStore.load()?.takeIf { it.apk.isFile&&it.info.versionCode>BuildConfig.VERSION_CODE.toLong() }?.let {
+                updateState.update(OperationalUpdateState.READY_TO_INSTALL,it.info.versionName,versionCode=it.info.versionCode)
+            }
+            val updateCoordinator = UpdateCoordinator(apkManager, updateState, BuildConfig.VERSION_CODE.toLong())
+            val installCoordinator=UpdateInstallCoordinator(apkManager,UpdateInstallAuthorizer(updateSource::authorizeInstall),platformInstaller,attemptStore,BuildConfig.VERSION_CODE.toLong(),{pairing.snapshot().state==PairingState.PAIRED})
+            installCoordinator.verifyAfterStartup(
+                config.identity.internalId.isNotBlank(),
+                pairing.snapshot().state == PairingState.PAIRED && credentialStore.credential()!=null,
+                runCatching { transactionalStore.publicationState(); true }.getOrDefault(false),
+            )
             val sessionId = newPlayerSessionId()
-            val health = DeviceHealthManager(AndroidDeviceHealthCollector(application, config.identity, stateManager, operationalState, transactionalStore, sessionId, updateState))
+            val health = DeviceHealthManager(AndroidDeviceHealthCollector(application, config.identity, stateManager, operationalState, transactionalStore, sessionId, updateState,attemptStore,{platformInstaller.capability().name}))
             val heartbeatSource = LocalHeartbeatSource(health)
             val heartbeatScheduler = DeviceHeartbeatScheduler(application, logger)
             val heartbeatDispatcher = DeviceHeartbeatDispatcher(
@@ -161,12 +190,6 @@ data class AppContainer(
                 transport = DeviceHeartbeatHttpApi(),
             )
             val commandScheduler = DeviceCommandScheduler(application, logger)
-            val updateScheduler = DeviceUpdateScheduler(application)
-            val updateSource = AuthenticatedPlayerUpdateSource(BuildConfig.UPDATE_ENDPOINT, credentialStore::credential, BuildConfig.VERSION_CODE.toLong()) { channel -> runCatching { updateState.setChannel(UpdateChannel.valueOf(channel)) } }
-            val apkManager = com.loopin.player2.core.sync.PlayerUpdateManager(updateSource, updateSource,
-                object:com.loopin.player2.core.sync.PlayerInstaller{override fun availability()=com.loopin.player2.core.sync.InstallerAvailability.REQUIRES_USER_ACTION;override fun install(apk:java.io.File)=com.loopin.player2.core.sync.InstallationResult.UserActionRequired},
-                AndroidApkSignatureVerifier(application), java.io.File(application.filesDir,"updates"), installedVersionCode=BuildConfig.VERSION_CODE.toLong())
-            val updateCoordinator = UpdateCoordinator(apkManager, updateState, BuildConfig.VERSION_CODE.toLong())
             val commandExecutor = SafeCommandExecutor(
                 status = health::collectNow,
                 syncNow = {
@@ -187,6 +210,18 @@ data class AppContainer(
                     result
                 },
                 checkUpdate = { if(updateScheduler.schedule(0)) "scheduled" else "schedule_failed" },
+                installUpdate = {
+                    val code=when(val result=installCoordinator.requestInstall()){
+                        UpdateInstallRequestResult.Accepted->"install_request_accepted"
+                        UpdateInstallRequestResult.PermissionRequired->"user_action_required"
+                        UpdateInstallRequestResult.AlreadyRunning->"install_already_running"
+                        UpdateInstallRequestResult.NoPreparedUpdate->"no_prepared_update"
+                        UpdateInstallRequestResult.NotAuthorized->"update_not_authorized"
+                        is UpdateInstallRequestResult.Failed->result.code.lowercase()
+                    }
+                    attemptStore.load()?.let(updateSource::reportInstall)
+                    code
+                },
             )
             val commandDispatcher = DeviceCommandDispatcher(
                 endpoint = BuildConfig.COMMAND_ENDPOINT,
@@ -218,6 +253,9 @@ data class AppContainer(
                 updateManager = updateState,
                 updateCoordinator = updateCoordinator,
                 updateScheduler = updateScheduler,
+                updateInstallCoordinator = installCoordinator,
+                updateAttemptStore = attemptStore,
+                updateSource = updateSource,
                 operationalState = operationalState,
             )
         }

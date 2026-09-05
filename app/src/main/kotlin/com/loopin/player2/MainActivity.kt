@@ -1,6 +1,7 @@
 package com.loopin.player2
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.annotation.SuppressLint
 import android.graphics.Color
 import android.os.Build
@@ -52,6 +53,7 @@ class MainActivity : Activity() {
     private var lastLoggedPlaybackState: PlaybackState? = null
     private var dynamicContent: DynamicContentController? = null
     private val weatherProvider by lazy { createLocalWeatherRepository(this) }
+    private var installPermissionDialogVisible=false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -76,11 +78,14 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        PendingInstallConfirmationBridge.attach(::showInstallConfirmation)
+        showInstallPermissionIfNeeded()
         if (Build.VERSION.SDK_INT <= 23 && isPaired()) startPlayback()
         kioskController.enter()
     }
 
     override fun onPause() {
+        PendingInstallConfirmationBridge.detach()
         if (Build.VERSION.SDK_INT <= 23) releasePlayback()
         super.onPause()
     }
@@ -273,6 +278,25 @@ class MainActivity : Activity() {
     }
 
     private fun isPaired(): Boolean = container.pairingManager.snapshot().state == PairingState.PAIRED
+
+    private fun showInstallConfirmation(systemIntent: android.content.Intent) {
+        runOnUiThread {
+            val attempt=container.updateAttemptStore.load()?:return@runOnUiThread
+            AlertDialog.Builder(this).setTitle("Atualização pronta")
+                .setMessage("Nova versão: ${attempt.targetVersionCode}\n\nPressione OK para continuar a atualização.")
+                .setPositiveButton("Instalar") { _,_->runCatching { startActivity(systemIntent) } }
+                .setNegativeButton("Agora não") { _,_->container.updateAttemptStore.save(attempt.copy(state=com.loopin.player2.core.sync.UpdateInstallationState.INSTALL_DEFERRED)) }
+                .setCancelable(false).show()
+        }
+    }
+
+    private fun showInstallPermissionIfNeeded(){
+        if(android.os.Build.VERSION.SDK_INT<26||installPermissionDialogVisible||container.updateAttemptStore.load()?.state!=com.loopin.player2.core.sync.UpdateInstallationState.INSTALL_PERMISSION_REQUIRED)return
+        installPermissionDialogVisible=true
+        AlertDialog.Builder(this).setTitle("Permissão para atualizar").setMessage("Autorize o Loopin Player a instalar esta atualização nas configurações do Android.")
+            .setPositiveButton("Abrir configurações"){_,_->startActivity(android.content.Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,android.net.Uri.parse("package:$packageName")))}
+            .setNegativeButton("Agora não",null).setOnDismissListener{installPermissionDialogVisible=false}.show()
+    }
 
     private fun renderDeviceState(state: DeviceRuntimeState) {
         runOnUiThread {

@@ -12,8 +12,8 @@ android {
         applicationId = "com.loopin.player2"
         minSdk = 21
         targetSdk = 36
-        versionCode = providers.environmentVariable("LOOPIN_VERSION_CODE").orNull?.toInt() ?: 13
-        versionName = providers.environmentVariable("LOOPIN_VERSION_NAME").orNull ?: "2.0.0-phase13-ota"
+        versionCode = providers.environmentVariable("LOOPIN_VERSION_CODE").orNull?.toInt() ?: 14
+        versionName = providers.environmentVariable("LOOPIN_VERSION_NAME").orNull ?: "2.0.0-phase14-update-install"
         buildConfigField("String", "PAIRING_ENDPOINT", "\"https://zdhsfirabkmivuzwyids.supabase.co/functions/v1/device-pairing\"")
         buildConfigField("String", "MANIFEST_ENDPOINT", "\"https://zdhsfirabkmivuzwyids.supabase.co/functions/v1/player-manifest\"")
         buildConfigField("String", "MEDIA_ENDPOINT", "\"https://zdhsfirabkmivuzwyids.supabase.co/functions/v1/player-media\"")

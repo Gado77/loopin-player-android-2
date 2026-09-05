@@ -53,6 +53,12 @@ fun interface ApkSignatureVerifier {
     fun isTrusted(apk: File, info: PlayerUpdateInfo): Boolean
 }
 
+interface PreparedUpdateStore {
+    fun load(): ApkPreparationResult.Ready?
+    fun save(value: ApkPreparationResult.Ready)
+    fun clear()
+}
+
 enum class InstallerAvailability { AVAILABLE, REQUIRES_USER_ACTION, UNAVAILABLE }
 
 sealed interface InstallationResult {
@@ -86,8 +92,9 @@ class PlayerUpdateManager(
     private val directory: File,
     private val spacePolicy: SpacePolicy = ReservedSpacePolicy(),
     private val installedVersionCode: Long = 0,
+    private val preparedStore: PreparedUpdateStore? = null,
 ) {
-    private var prepared: ApkPreparationResult.Ready? = null
+    private var prepared: ApkPreparationResult.Ready? = preparedStore?.load()
 
     init {
         require(directory.exists() || directory.mkdirs()) { "Cannot create APK update directory" }
@@ -115,7 +122,7 @@ class PlayerUpdateManager(
         val target = File(directory, "${validated.sha256.lowercase()}.apk")
         val part = File(directory, "${validated.sha256.lowercase()}.apk.part")
         if (target.isFile && validateApk(target, validated)) {
-            return ApkPreparationResult.Ready(validated, target).also { prepared = it }
+            return ApkPreparationResult.Ready(validated, target).also { prepared = it; preparedStore?.save(it) }
         }
         part.delete()
         return try {
@@ -138,7 +145,7 @@ class PlayerUpdateManager(
             require(validateApk(part, validated)) { "APK metadata, integrity or signature validation failed" }
             if (target.exists() && !target.delete()) error("Cannot replace prepared APK")
             check(part.renameTo(target)) { "Cannot activate prepared APK" }
-            ApkPreparationResult.Ready(validated, target).also { prepared = it }
+            ApkPreparationResult.Ready(validated, target).also { prepared = it; preparedStore?.save(it) }
         } catch (error: Exception) {
             part.delete()
             ApkPreparationResult.Rejected(error.message ?: error.javaClass.simpleName)
@@ -154,6 +161,17 @@ class PlayerUpdateManager(
             InstallerAvailability.AVAILABLE -> installer.install(update.apk)
         }
     }
+
+    /** Returns only a still-valid prepared artifact. No network is performed. */
+    @Synchronized fun preparedUpdate(): ApkPreparationResult.Ready? = prepared?.takeIf { validateApk(it.apk, it.info) }
+        ?: preparedStore?.load()?.takeIf { validateApk(it.apk, it.info) }?.also { prepared = it }
+
+    /** Revalidates every local invariant immediately before handing the APK to Android. */
+    @Synchronized fun revalidatePrepared(): ApkPreparationResult = preparedUpdate()?.let {
+        if (it.info.versionCode <= installedVersionCode) ApkPreparationResult.Rejected("Downgrade is not allowed")
+        else if (validateApk(it.apk, it.info)) it
+        else ApkPreparationResult.Rejected("Prepared APK is no longer valid")
+    } ?: ApkPreparationResult.Rejected("No validated APK is prepared")
 
     private fun validateApk(file: File, info: PlayerUpdateInfo): Boolean =
         file.isFile && file.length() == info.sizeBytes && sha256(file).equals(info.sha256, true) && signatureVerifier.isTrusted(file, info)

@@ -98,6 +98,10 @@ data class DeviceHealthSnapshot(
     val lastUpdateCheckEpochMs: Long? = null,
     val lastUpdateError: String? = null,
     val installationCapability: String = "UNKNOWN",
+    val installationState: String? = null,
+    val installRequestedAtEpochMs: Long? = null,
+    val postUpdateVerificationState: String? = null,
+    val lastInstallFailureCode: String? = null,
 )
 
 fun interface DeviceHealthCollector { fun collect(): DeviceHealthSnapshot }
@@ -162,6 +166,10 @@ object DeviceRuntimeSnapshotFactory {
         "last_update_check_epoch_ms" to snapshot.lastUpdateCheckEpochMs,
         "last_update_error" to sanitizeError(snapshot.lastUpdateError),
         "installation_capability" to snapshot.installationCapability,
+        "installation_state" to snapshot.installationState,
+        "install_requested_at_epoch_ms" to snapshot.installRequestedAtEpochMs,
+        "post_update_verification_state" to snapshot.postUpdateVerificationState,
+        "last_install_failure_code" to snapshot.lastInstallFailureCode,
     )
     fun sanitizeError(value: String?): String? = value?.replace(TOKEN, "[redacted]")
         ?.replace(Regex("[\\r\\n\\t]+"), " ")?.trim()?.take(256)?.takeIf(String::isNotEmpty)
@@ -278,7 +286,7 @@ class HeartbeatBackoffPolicy(
 
 enum class CommandType {
     RELOAD_PLAYLIST, SYNC_NOW, RESTART_PLAYER, CLEAR_CACHE, CHECK_UPDATE,
-    REBOOT_DEVICE, CAPTURE_SCREENSHOT, GET_STATUS, UNKNOWN;
+    INSTALL_UPDATE, REBOOT_DEVICE, CAPTURE_SCREENSHOT, GET_STATUS, UNKNOWN;
     companion object { fun parse(value: String): CommandType = entries.firstOrNull { it.name == value } ?: UNKNOWN }
 }
 
