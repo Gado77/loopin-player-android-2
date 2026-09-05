@@ -9,6 +9,7 @@ import java.security.MessageDigest
 import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertTrue
 
 class PlayerUpdateManagerTest {
     private val apk = "signed-apk-fixture".encodeToByteArray()
@@ -30,10 +31,13 @@ class PlayerUpdateManagerTest {
 
     @Test
     fun `invalid APK signature is rejected`() {
-        val manager = manager(info(11), signature = ApkSignatureVerifier { false })
+        val manager = manager(info(11), signature = ApkSignatureVerifier { _, _ -> false })
 
         assertIs<ApkPreparationResult.Rejected>(manager.prepare(info(11)))
     }
+
+    @Test fun `wrong package is rejected before download`() { assertTrue(manager(info(11)).prepare(info(11).copy(packageName="evil.player")) is ApkPreparationResult.Rejected) }
+    @Test fun `wrong certificate metadata is rejected before download`() { assertTrue(manager(info(11)).prepare(info(11).copy(certificateSha256="bad")) is ApkPreparationResult.Rejected) }
 
     @Test
     fun `invalid APK checksum is rejected and part removed`() {
@@ -90,7 +94,7 @@ class PlayerUpdateManagerTest {
     private fun manager(
         update: PlayerUpdateInfo,
         media: UpdateMediaSourceFactory = UpdateMediaSourceFactory { MediaSource { ByteArrayInputStream(apk) } },
-        signature: ApkSignatureVerifier = ApkSignatureVerifier { true },
+        signature: ApkSignatureVerifier = ApkSignatureVerifier { _, _ -> true },
         directory: java.io.File = Files.createTempDirectory("updates").toFile(),
         space: SpacePolicy = SpacePolicy { _, _ -> true },
         installer: PlayerInstaller = installer(InstallerAvailability.REQUIRES_USER_ACTION, InstallationResult.UserActionRequired),
@@ -104,12 +108,15 @@ class PlayerUpdateManagerTest {
     )
 
     private fun info(versionCode: Long) = PlayerUpdateInfo(
+        releaseId = "00000000-0000-0000-0000-000000000011",
         versionCode = versionCode,
         versionName = "2.0.$versionCode",
         downloadUrl = "https://updates.example/player.apk",
         sizeBytes = apk.size.toLong(),
         sha256 = MessageDigest.getInstance("SHA-256").digest(apk).joinToString("") { "%02x".format(it) },
-        releaseChannel = "stable",
+        packageName = "com.loopin.player2",
+        certificateSha256 = "a".repeat(64),
+        releaseChannel = "STABLE",
     )
 
     private fun installer(availability: InstallerAvailability, result: InstallationResult) = object : PlayerInstaller {

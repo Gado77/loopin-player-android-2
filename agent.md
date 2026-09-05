@@ -1,6 +1,6 @@
 # Loopin Player 2.0 — Documento mestre da reconstrução
 
-> Última atualização: 05/09/2026 — estado implementado até a Fase 12.
+> Última atualização: 05/09/2026 — estado implementado até a Fase 13.
 >
 > Este arquivo é o ponto de entrada para qualquer pessoa ou agente que continue o trabalho. Ele descreve o que existe, por que existe, como validar e, principalmente, o que ainda **não** existe. Consulte também os documentos em `docs/` para auditorias e resultados detalhados de cada fase.
 
@@ -33,8 +33,8 @@ Nunca alterar como consequência deste projeto:
 Identidade Android atual:
 
 - applicationId: `com.loopin.player2`;
-- versão: `2.0.0-phase12-diagnostics`;
-- versionCode: `1`;
+- versão: `2.0.0-phase13-ota`;
+- versionCode: `13` (monotônico a partir desta fase);
 - minSdk: 21;
 - targetSdk/compileSdk: 36;
 - orientação: landscape;
@@ -601,7 +601,9 @@ Fundação existente:
 - APK preparado preservado se instalação falhar;
 - interface `PlayerInstaller`.
 
-Não existe fonte remota concreta nem instalação automática.
+Desde a Fase 13 existe distribuição remota controlada: releases DRAFT/PUBLISHED/REVOKED, canais STABLE/BETA, bucket privado, inspeção autoritativa via Android build-tools, `player-update`, fonte autenticada, check one-shot de aproximadamente seis horas, download temporário e estado READY_TO_INSTALL. `CHECK_UPDATE` apenas antecipa o check.
+
+Publicação global exige `release_admin`; package é fixo em `com.loopin.player2`; versionCode, SHA, tamanho e certificado são validados. Releases publicadas são imutáveis e URLs assinadas não são identidade nem são persistidas. A assinatura release é configurada somente por variáveis de ambiente e nenhuma chave entra no Git.
 
 Android comum pode exigir “instalar apps desconhecidos” e confirmação do sistema. Instalação silenciosa normalmente exige Device Owner/MDM ou capacidade documentada do fabricante. ADB install não torna o app Device Owner.
 

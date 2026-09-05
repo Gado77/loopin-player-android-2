@@ -15,3 +15,11 @@ entrypoint = "./functions/player-media/index.ts"
 [functions.player-commands]
 verify_jwt = false
 entrypoint = "./functions/player-commands/index.ts"
+
+[functions."player-update"]
+verify_jwt = false
+entrypoint = "./functions/player-update/index.ts"
+
+[functions."admin-releases"]
+verify_jwt = false
+entrypoint = "./functions/admin-releases/index.ts"

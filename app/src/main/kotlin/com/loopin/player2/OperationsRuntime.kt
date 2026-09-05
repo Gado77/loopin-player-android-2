@@ -92,6 +92,7 @@ class AndroidDeviceHealthCollector(
     private val operational: OperationalStateRegistry,
     private val store: TransactionalPlaylistStore,
     private val sessionId: String,
+    private val updateManager: OperationalUpdateManager,
 ) : DeviceHealthCollector {
     override fun collect(): DeviceHealthSnapshot {
         val memory = ActivityManager.MemoryInfo().also {
@@ -116,6 +117,9 @@ class AndroidDeviceHealthCollector(
             operational.lastError, health, sessionId, memory.lowMemory,
             publication?.active?.playlistId, publication?.active?.playlistVersion, publication?.active?.manifestSha256,
             publication?.previous?.playlistId, operational.currentItemId, operational.currentContentKind,
-            operational.currentMediaType, operational.lastErrorCode, operational.lastErrorAtEpochMs)
+            operational.currentMediaType, operational.lastErrorCode, operational.lastErrorAtEpochMs,
+            updateManager.snapshot().channel.name, BuildConfig.VERSION_CODE.toLong(), updateManager.snapshot().state.name,
+            updateManager.snapshot().availableVersionCode, updateManager.snapshot().preparedVersionCode,
+            updateManager.snapshot().lastCheckEpochMs, updateManager.snapshot().lastError, "INTERACTIVE")
     }
 }

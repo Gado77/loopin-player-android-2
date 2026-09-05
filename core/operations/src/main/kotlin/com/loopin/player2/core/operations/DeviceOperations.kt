@@ -90,6 +90,14 @@ data class DeviceHealthSnapshot(
     val currentMediaType: String? = null,
     val lastErrorCode: String? = null,
     val lastErrorAtEpochMs: Long? = null,
+    val updateChannel: String = "STABLE",
+    val currentVersionCode: Long = 1,
+    val updateState: String = "UP_TO_DATE",
+    val availableVersionCode: Long? = null,
+    val preparedVersionCode: Long? = null,
+    val lastUpdateCheckEpochMs: Long? = null,
+    val lastUpdateError: String? = null,
+    val installationCapability: String = "UNKNOWN",
 )
 
 fun interface DeviceHealthCollector { fun collect(): DeviceHealthSnapshot }
@@ -146,6 +154,14 @@ object DeviceRuntimeSnapshotFactory {
         "last_error_code" to snapshot.lastErrorCode?.take(64),
         "last_error_summary" to sanitizeError(snapshot.lastError),
         "last_error_at_epoch_ms" to snapshot.lastErrorAtEpochMs,
+        "update_channel" to snapshot.updateChannel,
+        "current_version_code" to snapshot.currentVersionCode,
+        "update_state" to snapshot.updateState,
+        "available_version_code" to snapshot.availableVersionCode,
+        "prepared_version_code" to snapshot.preparedVersionCode,
+        "last_update_check_epoch_ms" to snapshot.lastUpdateCheckEpochMs,
+        "last_update_error" to sanitizeError(snapshot.lastUpdateError),
+        "installation_capability" to snapshot.installationCapability,
     )
     fun sanitizeError(value: String?): String? = value?.replace(TOKEN, "[redacted]")
         ?.replace(Regex("[\\r\\n\\t]+"), " ")?.trim()?.take(256)?.takeIf(String::isNotEmpty)
@@ -268,8 +284,8 @@ enum class CommandType {
 
 enum class UpdateChannel { STABLE, BETA }
 enum class OperationalUpdateState {
-    UP_TO_DATE, UPDATE_AVAILABLE, DOWNLOADING, DOWNLOADED, VALIDATING,
-    INSTALLATION_UNAVAILABLE, INSTALLING, INSTALL_FAILED, INVALID
+    UP_TO_DATE, CHECKING, UPDATE_AVAILABLE, DOWNLOADING, DOWNLOADED, VALIDATING, READY_TO_INSTALL, FAILED,
+    INSUFFICIENT_STORAGE, INSTALLATION_UNAVAILABLE, INSTALLING, INSTALL_FAILED, INVALID
 }
 
 data class OperationalUpdateSnapshot(
@@ -278,6 +294,9 @@ data class OperationalUpdateSnapshot(
     val state: OperationalUpdateState = OperationalUpdateState.UP_TO_DATE,
     val availableVersion: String? = null,
     val lastError: String? = null,
+    val availableVersionCode: Long? = null,
+    val preparedVersionCode: Long? = null,
+    val lastCheckEpochMs: Long? = null,
 )
 
 interface UpdateSettingsStore { fun loadChannel(): UpdateChannel; fun saveChannel(channel: UpdateChannel) }
@@ -285,8 +304,10 @@ class OperationalUpdateManager(private val store: UpdateSettingsStore, currentVe
     @Volatile private var current = OperationalUpdateSnapshot(currentVersion, store.loadChannel())
     fun snapshot(): OperationalUpdateSnapshot = current
     @Synchronized fun setChannel(channel: UpdateChannel) { store.saveChannel(channel); current = current.copy(channel = channel) }
-    @Synchronized fun update(state: OperationalUpdateState, version: String? = current.availableVersion, error: String? = null) {
-        current = current.copy(state = state, availableVersion = version, lastError = error)
+    @Synchronized fun update(state: OperationalUpdateState, version: String? = current.availableVersion, error: String? = null, versionCode: Long? = current.availableVersionCode) {
+        current = current.copy(state = state, availableVersion = version, lastError = error, availableVersionCode = versionCode,
+            preparedVersionCode = if (state == OperationalUpdateState.READY_TO_INSTALL) versionCode else current.preparedVersionCode,
+            lastCheckEpochMs = if (state == OperationalUpdateState.CHECKING) System.currentTimeMillis() else current.lastCheckEpochMs)
     }
 }
 

@@ -98,6 +98,10 @@ function runtimeSnapshot(value: unknown): Record<string, unknown> | null {
   const optional:{[key:string]:[number,RegExp?]}={active_playlist_id:[100],active_manifest_etag:[64,/^[a-f0-9]{64}$/],previous_playlist_id:[100],current_item_id:[100],current_content_kind:[16,/^(MEDIA|DYNAMIC)$/],current_media_type:[16,/^(VIDEO|IMAGE|WEATHER)$/]};
   for(const [key,[limit,pattern]] of Object.entries(optional)){const v=source[key];if(v===null||v===undefined)result[key]=null;else if(typeof v==="string"&&v.length<=limit&&(!pattern||pattern.test(v)))result[key]=v;else return null;}
   const version=source.active_playlist_version;if(version===null||version===undefined)result.active_playlist_version=null;else if(typeof version==="number"&&Number.isSafeInteger(version)&&version>=0)result.active_playlist_version=version;else return null;
+  for(const key of ["current_version_code","available_version_code","prepared_version_code","last_update_check_epoch_ms"]){const v=source[key];if(v===null||v===undefined)result[key]=null;else if(typeof v==="number"&&Number.isSafeInteger(v)&&v>=0)result[key]=v;else return null;}
+  const updateEnums:Record<string,string[]>={update_channel:["STABLE","BETA"],update_state:["UP_TO_DATE","CHECKING","UPDATE_AVAILABLE","DOWNLOADING","DOWNLOADED","VALIDATING","READY_TO_INSTALL","FAILED","INSUFFICIENT_STORAGE","INSTALLATION_UNAVAILABLE","INSTALLING","INSTALL_FAILED","INVALID"],installation_capability:["INTERACTIVE","DEVICE_OWNER","PRIVILEGED","UNKNOWN"]};
+  for(const [key,allowed] of Object.entries(updateEnums)){const v=source[key];if(typeof v!=="string"||!allowed.includes(v))return null;result[key]=v;}
+  const updateError=source.last_update_error;if(updateError===null||updateError===undefined)result.last_update_error=null;else if(typeof updateError==="string"&&updateError.length<=256)result.last_update_error=updateError;else return null;
   return result;
 }
 function safeLastError(value:unknown):Record<string,unknown>|null{
@@ -296,7 +300,9 @@ async function heartbeat(req: Request, body: Record<string, unknown>): Promise<R
     if(sessionId.length<1||sessionId.length>64||typeof body.app_version!=="string"||body.app_version.length<1||body.app_version.length>100)return json(400,{error:"invalid_runtime"});
     const lastError=safeLastError(body.last_error);if(body.last_error!==null&&body.last_error!==undefined&&!lastError)return json(400,{error:"invalid_last_error"});
     const{error:runtimeError}=await service.rpc("record_device_runtime_status",{p_device_id:stored.device_id,p_runtime:runtime,p_session_id:sessionId,p_app_version:body.app_version,p_last_error:lastError});
-    if(runtimeError)return json(400,{error:"invalid_runtime"});return json(200,{ok:true,server_time:new Date().toISOString()});
+    if(runtimeError)return json(400,{error:"invalid_runtime"});
+    await service.from("device_runtime_status").update({current_version_code:runtime.current_version_code,update_state:runtime.update_state,available_version_code:runtime.available_version_code,prepared_version_code:runtime.prepared_version_code,last_update_check:runtime.last_update_check_epoch_ms?new Date(Number(runtime.last_update_check_epoch_ms)).toISOString():null,last_update_error:runtime.last_update_error,installation_capability:runtime.installation_capability}).eq("device_id",stored.device_id);
+    return json(200,{ok:true,server_time:new Date().toISOString()});
   }
   const now = new Date().toISOString();
   const update: Record<string, unknown> = { last_seen_at: now, updated_at: now };

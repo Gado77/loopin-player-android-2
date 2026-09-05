@@ -1,13 +1,13 @@
 import "./styles.css";
 import type { Session } from "@supabase/supabase-js";
-import { assignPlaylistVersion, createPlaylist, createScreen, enqueuePlayerCommand, listHealthEvents, listMediaAssets, listPlaylists, listPublishedPlaylistVersions, listRecentCommands, listScreens, login, logout, pairPlayer, publishPlaylistDraft, savePlaylistDraft, uploadMediaAsset } from "./api";
+import { assignPlaylistVersion, createPlaylist, createReleaseUpload, createScreen, enqueuePlayerCommand, isReleaseAdmin, listHealthEvents, listMediaAssets, listPlayerReleases, listPlaylists, listPublishedPlaylistVersions, listRecentCommands, listScreens, login, logout, pairPlayer, publishPlaylistDraft, publishRelease, savePlaylistDraft, setDeviceUpdateChannel, uploadMediaAsset } from "./api";
 import { parsePairingCode, parsePairingQr } from "./pairing";
 import { PairingScanner } from "./scanner";
 import { classifyPresence, formatLastCommunication, presenceLabel } from "./presence";
 import { DashboardPresenceRefresher } from "./refresh";
 import { bindScreenGridEvents } from "./screen-grid-events";
 import { supabase } from "./supabase";
-import type { DeviceCommand, DeviceHealthEvent, DraftItem, MediaAsset, PairingProof, PlayerCommandType, Playlist, PlaylistVersion, Screen, ScreenDevice } from "./types";
+import type { DeviceCommand, DeviceHealthEvent, DraftItem, MediaAsset, PairingProof, PlayerCommandType, PlayerRelease, Playlist, PlaylistVersion, Screen, ScreenDevice } from "./types";
 import { mediaItem, moveItem, normalizeItems, removeItem, weatherItem } from "./playlist-editor";
 import { parseAdminArea, type AdminArea } from "./navigation";
 import { COMMAND_LABELS, commandResultLabel, commandStatusLabel, hasPendingCommands } from "./commands";
@@ -28,6 +28,8 @@ let editingPlaylist: Playlist | null = null;
 let draftItems: DraftItem[] = [];
 let deviceCommands: DeviceCommand[] = [];
 let healthEvents:DeviceHealthEvent[]=[];
+let releaseAdmin=false;
+let releases:PlayerRelease[]=[];
 const presenceRefresh = new DashboardPresenceRefresher(
   refreshDashboardData,
   () => document.visibilityState === "visible",
@@ -83,7 +85,9 @@ function renderLogin() {
 
 async function loadDashboard() {
   try {
+    releaseAdmin=await isReleaseAdmin(supabase);
     [screens, playlistVersions, mediaAssets, playlists, deviceCommands,healthEvents] = await Promise.all([listScreens(supabase), listPublishedPlaylistVersions(supabase), listMediaAssets(supabase), listPlaylists(supabase), listRecentCommands(supabase),listHealthEvents(supabase)]);
+    releases=releaseAdmin?await listPlayerReleases(supabase):[];
     renderDashboard();
   } catch (error) {
     renderDashboard();
@@ -121,7 +125,7 @@ function renderScreenCards() {
     const placeholder = assigned ? "" : `<option value="" selected disabled>${playlistVersions.length ? "Selecione uma versão" : "Nenhuma versão publicada"}</option>`;
     const options = placeholder + playlistVersions.map((version) => `<option value="${version.id}" ${assigned?.id === version.id ? "selected" : ""}>${escape(version.player_playlists?.name ?? "Playlist")} · v${version.version_number}</option>`).join("");
     const runtimeSummary=runtime?`<div class="runtime-summary"><span class="health health-${health.toLowerCase()}">${healthLabel(health)}</span><span>${runtime.playback_state==="PLAYING"?"Tocando":runtime.playback_state}</span><span>Sync: ${runtime.sync_state}</span><span>Livre: ${formatBytes(runtime.free_storage_bytes)}${isStorageLow(runtime)?" · BAIXO":""}</span></div>`:"";
-    const actions=paired?`<section class="device-actions"><h4>Ações</h4><div><button class="secondary diagnostic-button" data-device-id="${device!.id}">Diagnóstico</button><button class="secondary command-button" data-screen-id="${screen.id}" data-command="GET_STATUS">Atualizar status</button><button class="secondary command-button" data-screen-id="${screen.id}" data-command="SYNC_NOW">Sincronizar agora</button><button class="secondary command-button" data-screen-id="${screen.id}" data-command="RELOAD_PLAYLIST">Recarregar playlist</button></div><div class="command-history" data-screen-id="${screen.id}">${renderCommandHistory(screen.id)}</div></section>`:"";
+    const actions=paired?`<section class="device-actions"><h4>Ações</h4><div><button class="secondary diagnostic-button" data-device-id="${device!.id}">Diagnóstico</button><button class="secondary command-button" data-screen-id="${screen.id}" data-command="GET_STATUS">Atualizar status</button><button class="secondary command-button" data-screen-id="${screen.id}" data-command="SYNC_NOW">Sincronizar agora</button><button class="secondary command-button" data-screen-id="${screen.id}" data-command="RELOAD_PLAYLIST">Recarregar playlist</button><button class="secondary command-button" data-screen-id="${screen.id}" data-command="CHECK_UPDATE">Verificar atualização</button></div><label>Canal<select class="update-channel" data-screen-id="${screen.id}"><option ${device?.update_channel!=="BETA"?"selected":""}>STABLE</option><option ${device?.update_channel==="BETA"?"selected":""}>BETA</option></select></label><div class="command-history" data-screen-id="${screen.id}">${renderCommandHistory(screen.id)}</div></section>`:"";
     return `<article class="screen-card">
       <div><span class="status presence-${presence.toLowerCase()}">${presenceLabel(presence)}</span>
       <h3>${escape(screen.name)}</h3>
@@ -138,9 +142,10 @@ function renderDashboard() {
   scanner.stop();
   const cards = renderScreenCards();
 
-  const content = activeArea === "screens" ? renderScreensArea(cards) : activeArea === "media" ? renderMediaArea() : renderPlaylistsArea();
+  if(activeArea==="updates"&&!releaseAdmin)activeArea="screens";
+  const content = activeArea === "screens" ? renderScreensArea(cards) : activeArea === "media" ? renderMediaArea() : activeArea === "playlists" ? renderPlaylistsArea() : renderUpdatesArea();
   root.innerHTML = `<header><div class="brand">LOOPIN <small>ADMIN 2.0</small></div>
-    <nav class="main-nav"><button data-area="screens" class="text-button ${activeArea==="screens"?"active":""}">Telas</button><button data-area="media" class="text-button ${activeArea==="media"?"active":""}">Mídias</button><button data-area="playlists" class="text-button ${activeArea==="playlists"?"active":""}">Playlists</button></nav>
+    <nav class="main-nav"><button data-area="screens" class="text-button ${activeArea==="screens"?"active":""}">Telas</button><button data-area="media" class="text-button ${activeArea==="media"?"active":""}">Mídias</button><button data-area="playlists" class="text-button ${activeArea==="playlists"?"active":""}">Playlists</button>${releaseAdmin?`<button data-area="updates" class="text-button ${activeArea==="updates"?"active":""}">Atualizações</button>`:""}</nav>
     <button id="logout" class="text-button">Sair</button></header>
     <main class="dashboard"><div id="notice" class="notice" aria-live="polite"></div>${content}</main><div id="modal-root"></div>`;
 
@@ -150,7 +155,7 @@ function renderDashboard() {
     await logout(supabase);
   });
   document.querySelectorAll<HTMLElement>("[data-area]").forEach(button=>button.addEventListener("click",()=>{activeArea=parseAdminArea(button.dataset.area);renderDashboard();}));
-  if(activeArea==="screens") bindScreensArea(); else if(activeArea==="media") bindMediaArea(); else bindPlaylistsArea();
+  if(activeArea==="screens") bindScreensArea(); else if(activeArea==="media") bindMediaArea(); else if(activeArea==="playlists") bindPlaylistsArea(); else bindUpdatesArea();
 }
 
 function renderScreensArea(cards:string){return `<div class="title-row"><div><h1>Suas telas</h1><p>Gerencie vínculo, presença e conteúdo.</p></div><button id="new-screen">Nova tela</button></div><section class="screen-grid">${cards}</section>`;}
@@ -168,11 +173,14 @@ function bindScreensArea(){document.querySelector("#new-screen")!.addEventListen
         notice("Playlist da tela atualizada.", "success");
       } catch (error) { notice((error as Error).message); select.disabled = false; }
     },
-  });document.querySelector<HTMLElement>(".screen-grid")!.addEventListener("click",event=>{const target=event.target as Element;const diagnostic=target.closest<HTMLButtonElement>(".diagnostic-button");if(diagnostic?.dataset.deviceId){const device=screens.flatMap(s=>s.devices??[]).find(d=>d.id===diagnostic.dataset.deviceId);if(device)renderDiagnostic(device);return;}const button=target.closest<HTMLButtonElement>(".command-button");if(button?.dataset.screenId&&button.dataset.command)void sendCommand(button,button.dataset.screenId,button.dataset.command as PlayerCommandType);});}
+  });document.querySelector<HTMLElement>(".screen-grid")!.addEventListener("change",event=>{const select=(event.target as Element).closest<HTMLSelectElement>(".update-channel");if(select?.dataset.screenId)void setDeviceUpdateChannel(supabase,select.dataset.screenId,select.value as "STABLE"|"BETA").then(()=>notice("Canal atualizado.","success")).catch((e:unknown)=>notice((e as Error).message));});document.querySelector<HTMLElement>(".screen-grid")!.addEventListener("click",event=>{const target=event.target as Element;const diagnostic=target.closest<HTMLButtonElement>(".diagnostic-button");if(diagnostic?.dataset.deviceId){const device=screens.flatMap(s=>s.devices??[]).find(d=>d.id===diagnostic.dataset.deviceId);if(device)renderDiagnostic(device);return;}const button=target.closest<HTMLButtonElement>(".command-button");if(button?.dataset.screenId&&button.dataset.command)void sendCommand(button,button.dataset.screenId,button.dataset.command as PlayerCommandType);});}
 
 function renderDiagnostic(device:ScreenDevice){const r=device.runtime_status;const events=recentEvents(healthEvents,device.id,50);const row=(label:string,value:unknown)=>`<div><dt>${escape(label)}</dt><dd>${escape(String(value??"—"))}</dd></div>`;modal(`<div class="editor-heading"><div><h2>Diagnóstico</h2><p>Último estado operacional conhecido.</p></div><button class="secondary cancel">Fechar</button></div>${r?`<section class="diagnostic-health health-${diagnosticHealth(r).toLowerCase()}">${healthLabel(diagnosticHealth(r))}</section><dl class="diagnostic-grid">${row("Sessão",r.session_id)}${row("Uptime",formatUptime(r.uptime_ms))}${row("Memória disponível",formatBytes(r.available_memory_bytes)+(r.memory_low?" · BAIXA":""))}${row("Armazenamento",`${formatBytes(r.free_storage_bytes)} livres de ${formatBytes(r.total_storage_bytes)}`)}${row("Playback",r.playback_state)}${row("Cache",r.cache_state)}${row("Sync",r.sync_state)}${row("Playlist ACTIVE",r.active_playlist_id?`${r.active_playlist_id} · v${r.active_playlist_version??"—"}`:"—")}${row("Item atual",[r.current_item_id,r.current_content_kind,r.current_media_type].filter(Boolean).join(" · ")||"—")}${row("Último sync",r.last_sync_at?new Date(r.last_sync_at).toLocaleString("pt-BR"):"Nunca")}${row("Última comunicação",formatLastCommunication(r.last_seen_at))}${row("Último erro",r.last_error_summary?`${r.last_error_code??"ERRO"}: ${r.last_error_summary}`:"Nenhum")}${row("Versão",r.app_version)}</dl>`:`<div class="empty">O Player ainda não enviou diagnóstico.</div>`}<section class="health-history"><h3>Eventos recentes</h3>${events.map(e=>`<div class="health-event severity-${e.severity.toLowerCase()}"><span>${new Date(e.occurred_at).toLocaleString("pt-BR")}</span><strong>${escape(eventLabel(e.event_type))}</strong></div>`).join("")||`<small class="muted">Nenhum evento relevante.</small>`}</section>`);document.querySelector(".cancel")!.addEventListener("click",closeModal);}
 
 async function sendCommand(button:HTMLButtonElement,screenId:string,type:PlayerCommandType){if(type!=="GET_STATUS"&&!window.confirm(`Enviar “${COMMAND_LABELS[type]}” para esta tela?`))return;button.disabled=true;try{const created=await enqueuePlayerCommand(supabase,screenId,type);deviceCommands=[created,...deviceCommands];document.querySelector<HTMLElement>(`.command-history[data-screen-id="${screenId}"]`)!.innerHTML=renderCommandHistory(screenId);commandRefresh.start();notice("Comando enviado; aguardando o Player.","success");}catch(error){notice((error as Error).message);}finally{button.disabled=false;}}
+
+function renderUpdatesArea(){const cards=releases.map(r=>`<article class="content-card"><span class="status">${r.channel}</span><h3>${r.version_code?`v${r.version_code} · ${escape(r.version_name??"")}`:"Aguardando inspeção"}</h3><p>${(r.apk_size_bytes/1048576).toFixed(2)} MiB · ${r.apk_sha256?r.apk_sha256.slice(0,12)+"…":"SHA pendente"}</p><small>${r.status} · ${new Date(r.published_at??r.created_at).toLocaleString("pt-BR")}</small><div class="actions">${r.status==="DRAFT"&&r.inspected_at?`<button class="publish-release" data-id="${r.id}">Publicar</button>`:""}${r.status==="PUBLISHED"?`<button class="secondary revoke-release" data-id="${r.id}">Revogar</button>`:""}</div></article>`).join("")||`<div class="empty">Nenhum release.</div>`;return `<div class="title-row"><div><h1>Atualizações</h1><p>Releases assinados e privados do Loopin Player 2.0.</p></div><button id="new-release">Novo release</button></div><input id="release-file" type="file" accept=".apk,application/vnd.android.package-archive" hidden/><label>Canal<select id="release-channel"><option>STABLE</option><option>BETA</option></select></label><label>Notas<textarea id="release-notes" maxlength="4000"></textarea></label><div id="upload-state" class="upload-state"></div><section class="content-grid">${cards}</section>`;}
+function bindUpdatesArea(){document.querySelector("#new-release")?.addEventListener("click",()=>document.querySelector<HTMLInputElement>("#release-file")!.click());document.querySelector<HTMLInputElement>("#release-file")?.addEventListener("change",async e=>{const input=e.currentTarget as HTMLInputElement,file=input.files?.[0];if(!file)return;const state=document.querySelector<HTMLElement>("#upload-state")!;try{await createReleaseUpload(supabase,file,(document.querySelector<HTMLSelectElement>("#release-channel")!.value as "STABLE"|"BETA"),document.querySelector<HTMLTextAreaElement>("#release-notes")!.value,s=>state.textContent=s);releases=await listPlayerReleases(supabase);renderDashboard();notice("APK privado enviado. Execute a inspeção controlada antes de publicar.","success");}catch(error){notice((error as Error).message);}finally{input.value="";}});document.querySelectorAll<HTMLButtonElement>(".publish-release,.revoke-release").forEach(b=>b.addEventListener("click",async()=>{try{await publishRelease(supabase,b.dataset.id!,b.classList.contains("revoke-release"));releases=await listPlayerReleases(supabase);renderDashboard();notice("Release atualizado.","success");}catch(error){notice((error as Error).message);}}));}
 
 function renderMediaArea(){const cards=mediaAssets.map(a=>`<article class="content-card"><span class="status">${a.media_type}</span><h3>${escape(a.name)}</h3><p>${(a.expected_size_bytes/1048576).toFixed(2)} MiB</p><small>${new Date(a.created_at).toLocaleString("pt-BR")}</small></article>`).join("")||`<div class="empty">Nenhuma mídia enviada.</div>`;return `<div class="title-row"><div><h1>Biblioteca de mídia</h1><p>Arquivos privados prontos para playlists.</p></div><button id="upload-media">Enviar mídia</button></div><input id="media-file" type="file" accept="video/mp4,image/jpeg,image/png" hidden/><div id="upload-state" class="upload-state"></div><section class="content-grid">${cards}</section>`;}
 function bindMediaArea(){document.querySelector("#upload-media")!.addEventListener("click",()=>document.querySelector<HTMLInputElement>("#media-file")!.click());document.querySelector<HTMLInputElement>("#media-file")!.addEventListener("change",async event=>{const input=event.currentTarget as HTMLInputElement;const file=input.files?.[0];if(!file)return;const state=document.querySelector<HTMLElement>("#upload-state")!;try{const result=await uploadMediaAsset(supabase,session!.user.id,file,value=>state.textContent=value);mediaAssets=await listMediaAssets(supabase);renderDashboard();notice(result.deduplicated?"Mídia já existente; asset reutilizado.":"Mídia enviada com sucesso.","success");}catch(error){notice((error as Error).message);}finally{input.value="";}});}

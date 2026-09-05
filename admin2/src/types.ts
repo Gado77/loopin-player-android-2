@@ -5,9 +5,10 @@ export type ScreenDevice = {
   app_version: string | null;
   metadata?: Record<string, unknown> | null;
   runtime_status?: DeviceRuntimeStatus | null;
+  update_channel?: "STABLE"|"BETA";
 };
 
-export type DeviceRuntimeStatus={device_id:string;screen_id:string;last_seen_at:string;session_id:string;app_version:string;uptime_ms:number;available_memory_bytes:number;memory_low:boolean;free_storage_bytes:number;total_storage_bytes:number;playback_state:"PLAYING"|"PAUSED"|"ERROR"|"OFFLINE"|"IDLE";cache_state:"OK"|"INCOMPLETE"|"ERROR";sync_state:"OK"|"SYNCING"|"ERROR"|"NEVER_SYNCED";health_state:"HEALTHY"|"DEGRADED"|"ERROR";last_sync_at:string|null;last_error_code:string|null;last_error_summary:string|null;last_error_at:string|null;active_playlist_id:string|null;active_playlist_version:number|null;active_manifest_etag:string|null;previous_playlist_id:string|null;current_item_id:string|null;current_content_kind:"MEDIA"|"DYNAMIC"|null;current_media_type:"VIDEO"|"IMAGE"|"WEATHER"|null;updated_at:string};
+export type DeviceRuntimeStatus={device_id:string;screen_id:string;last_seen_at:string;session_id:string;app_version:string;uptime_ms:number;available_memory_bytes:number;memory_low:boolean;free_storage_bytes:number;total_storage_bytes:number;playback_state:"PLAYING"|"PAUSED"|"ERROR"|"OFFLINE"|"IDLE";cache_state:"OK"|"INCOMPLETE"|"ERROR";sync_state:"OK"|"SYNCING"|"ERROR"|"NEVER_SYNCED";health_state:"HEALTHY"|"DEGRADED"|"ERROR";last_sync_at:string|null;last_error_code:string|null;last_error_summary:string|null;last_error_at:string|null;active_playlist_id:string|null;active_playlist_version:number|null;active_manifest_etag:string|null;previous_playlist_id:string|null;current_item_id:string|null;current_content_kind:"MEDIA"|"DYNAMIC"|null;current_media_type:"VIDEO"|"IMAGE"|"WEATHER"|null;current_version_code?:number|null;update_state?:string|null;available_version_code?:number|null;prepared_version_code?:number|null;last_update_check?:string|null;last_update_error?:string|null;installation_capability?:string|null;updated_at:string};
 export type DeviceHealthEvent={id:string;device_id:string;screen_id:string;event_type:string;severity:"INFO"|"WARNING"|"ERROR";occurred_at:string;metadata:Record<string,unknown>};
 
 export type Screen = {
@@ -52,6 +53,7 @@ export type DraftMediaItem = { id:string; order:number; kind:"MEDIA"; assetId:st
 export type DraftWeatherItem = { id:string; order:number; kind:"DYNAMIC"; dynamicType:"WEATHER"; durationMs:number; configuration:{city:string;lat:string;lon:string} };
 export type DraftItem = DraftMediaItem | DraftWeatherItem;
 export type Playlist = { id:string; name:string; created_at:string; player_playlist_drafts?:{items:DraftItem[];updated_at:string}|null; player_playlist_versions?:PlaylistVersion[] };
-export type PlayerCommandType = "GET_STATUS"|"SYNC_NOW"|"RELOAD_PLAYLIST";
+export type PlayerCommandType = "GET_STATUS"|"SYNC_NOW"|"RELOAD_PLAYLIST"|"CHECK_UPDATE";
+export type PlayerRelease={id:string;channel:"STABLE"|"BETA";version_code:number|null;version_name:string|null;package_name:string|null;apk_size_bytes:number;apk_sha256:string|null;certificate_sha256:string|null;status:"DRAFT"|"PUBLISHED"|"REVOKED";release_notes:string|null;created_at:string;published_at:string|null;inspected_at:string|null};
 export type PlayerCommandStatus = "PENDING"|"DELIVERED"|"SUCCEEDED"|"FAILED"|"EXPIRED";
 export type DeviceCommand = { id:string; screen_id:string; device_id:string; command_type:PlayerCommandType; status:PlayerCommandStatus; created_at:string; delivered_at:string|null; completed_at:string|null; expires_at:string; result:Record<string,unknown>|null };

@@ -47,12 +47,14 @@ class LoopinApplication : Application(), Application.ActivityLifecycleCallbacks 
                     container.heartbeatScheduler.schedule()
                     container.syncScheduler?.schedule(0)
                     container.commandScheduler.schedule()
+                    container.updateScheduler.schedule()
                 }
             }
         }
         if (container.pairingManager.snapshot().state == PairingState.PAIRED) {
             container.syncScheduler?.schedule(0)
             container.commandScheduler.schedule()
+            container.updateScheduler.schedule()
         }
         container.telemetry.record(TelemetryEvent("foundation_started", System.currentTimeMillis()))
         container.logger.log(LogLevel.INFO, TAG, OperationalLogEvent.DEVICE_STARTED)
@@ -112,6 +114,8 @@ data class AppContainer(
     val commandDispatcher: DeviceCommandDispatcher,
     val commandScheduler: DeviceCommandScheduler,
     val updateManager: OperationalUpdateManager,
+    val updateCoordinator: UpdateCoordinator,
+    val updateScheduler: DeviceUpdateScheduler,
     val operationalState: OperationalStateRegistry,
 ) {
     companion object {
@@ -144,8 +148,9 @@ data class AppContainer(
             )
             val syncScheduler = ContentSyncScheduler(application, syncConfig, logger)
             val pairing = DevicePairingManager(AndroidPairingStore(application))
+            val updateState = OperationalUpdateManager(AndroidUpdateSettingsStore(application), BuildConfig.VERSION_NAME)
             val sessionId = newPlayerSessionId()
-            val health = DeviceHealthManager(AndroidDeviceHealthCollector(application, config.identity, stateManager, operationalState, transactionalStore, sessionId))
+            val health = DeviceHealthManager(AndroidDeviceHealthCollector(application, config.identity, stateManager, operationalState, transactionalStore, sessionId, updateState))
             val heartbeatSource = LocalHeartbeatSource(health)
             val heartbeatScheduler = DeviceHeartbeatScheduler(application, logger)
             val heartbeatDispatcher = DeviceHeartbeatDispatcher(
@@ -156,6 +161,12 @@ data class AppContainer(
                 transport = DeviceHeartbeatHttpApi(),
             )
             val commandScheduler = DeviceCommandScheduler(application, logger)
+            val updateScheduler = DeviceUpdateScheduler(application)
+            val updateSource = AuthenticatedPlayerUpdateSource(BuildConfig.UPDATE_ENDPOINT, credentialStore::credential, BuildConfig.VERSION_CODE.toLong()) { channel -> runCatching { updateState.setChannel(UpdateChannel.valueOf(channel)) } }
+            val apkManager = com.loopin.player2.core.sync.PlayerUpdateManager(updateSource, updateSource,
+                object:com.loopin.player2.core.sync.PlayerInstaller{override fun availability()=com.loopin.player2.core.sync.InstallerAvailability.REQUIRES_USER_ACTION;override fun install(apk:java.io.File)=com.loopin.player2.core.sync.InstallationResult.UserActionRequired},
+                AndroidApkSignatureVerifier(application), java.io.File(application.filesDir,"updates"), installedVersionCode=BuildConfig.VERSION_CODE.toLong())
+            val updateCoordinator = UpdateCoordinator(apkManager, updateState, BuildConfig.VERSION_CODE.toLong())
             val commandExecutor = SafeCommandExecutor(
                 status = health::collectNow,
                 syncNow = {
@@ -175,6 +186,7 @@ data class AppContainer(
                     logger.log(LogLevel.INFO, "DeviceCommands", "COMMAND_RELOAD_REQUESTED code=$result")
                     result
                 },
+                checkUpdate = { if(updateScheduler.schedule(0)) "scheduled" else "schedule_failed" },
             )
             val commandDispatcher = DeviceCommandDispatcher(
                 endpoint = BuildConfig.COMMAND_ENDPOINT,
@@ -203,7 +215,9 @@ data class AppContainer(
                 commandExecutor = commandExecutor,
                 commandDispatcher = commandDispatcher,
                 commandScheduler = commandScheduler,
-                updateManager = OperationalUpdateManager(AndroidUpdateSettingsStore(application), BuildConfig.VERSION_NAME),
+                updateManager = updateState,
+                updateCoordinator = updateCoordinator,
+                updateScheduler = updateScheduler,
                 operationalState = operationalState,
             )
         }

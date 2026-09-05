@@ -10,21 +10,27 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data class PlayerUpdateInfo(
+    val releaseId: String,
     val versionCode: Long,
     val versionName: String,
     val downloadUrl: String,
     val sizeBytes: Long,
     val sha256: String,
+    val packageName: String,
+    val certificateSha256: String,
     val releaseChannel: String,
     val releaseNotes: String? = null,
 ) {
     fun validate(): PlayerUpdateInfo {
         require(versionCode > 0) { "versionCode must be positive" }
+        require(releaseId.matches(Regex("[0-9a-fA-F-]{36}"))) { "Invalid release id" }
         require(versionName.isNotBlank()) { "versionName is required" }
         require(isHttpUrl(downloadUrl)) { "Invalid APK download URL" }
         require(sizeBytes > 0) { "APK size must be positive" }
         require(Regex("[A-Fa-f0-9]{64}").matches(sha256)) { "Invalid APK SHA-256" }
-        require(Regex("[a-z][a-z0-9_-]{1,31}").matches(releaseChannel)) { "Invalid release channel" }
+        require(packageName == "com.loopin.player2") { "Invalid APK package" }
+        require(Regex("[A-Fa-f0-9]{64}").matches(certificateSha256)) { "Invalid certificate SHA-256" }
+        require(releaseChannel.uppercase() in setOf("STABLE", "BETA")) { "Invalid release channel" }
         return this
     }
 }
@@ -44,7 +50,7 @@ fun interface UpdateMediaSourceFactory {
 }
 
 fun interface ApkSignatureVerifier {
-    fun isTrusted(apk: File): Boolean
+    fun isTrusted(apk: File, info: PlayerUpdateInfo): Boolean
 }
 
 enum class InstallerAvailability { AVAILABLE, REQUIRES_USER_ACTION, UNAVAILABLE }
@@ -79,6 +85,7 @@ class PlayerUpdateManager(
     private val signatureVerifier: ApkSignatureVerifier,
     private val directory: File,
     private val spacePolicy: SpacePolicy = ReservedSpacePolicy(),
+    private val installedVersionCode: Long = 0,
 ) {
     private var prepared: ApkPreparationResult.Ready? = null
 
@@ -101,6 +108,7 @@ class PlayerUpdateManager(
     fun prepare(info: PlayerUpdateInfo): ApkPreparationResult {
         val validated = runCatching { info.validate() }
             .getOrElse { return ApkPreparationResult.Rejected(it.message ?: "Invalid update metadata") }
+        if (validated.versionCode <= installedVersionCode) return ApkPreparationResult.Rejected("Downgrade is not allowed")
         if (!spacePolicy.hasSpace(directory, validated.sizeBytes + 1_048_576L)) {
             return ApkPreparationResult.Rejected("Insufficient storage")
         }
@@ -127,7 +135,7 @@ class PlayerUpdateManager(
                     fileOutput.fd.sync()
                 }
             }
-            require(validateApk(part, validated)) { "APK integrity or signature validation failed" }
+            require(validateApk(part, validated)) { "APK metadata, integrity or signature validation failed" }
             if (target.exists() && !target.delete()) error("Cannot replace prepared APK")
             check(part.renameTo(target)) { "Cannot activate prepared APK" }
             ApkPreparationResult.Ready(validated, target).also { prepared = it }
@@ -148,7 +156,7 @@ class PlayerUpdateManager(
     }
 
     private fun validateApk(file: File, info: PlayerUpdateInfo): Boolean =
-        file.isFile && file.length() == info.sizeBytes && sha256(file).equals(info.sha256, true) && signatureVerifier.isTrusted(file)
+        file.isFile && file.length() == info.sizeBytes && sha256(file).equals(info.sha256, true) && signatureVerifier.isTrusted(file, info)
 
     private fun sha256(file: File): String = file.inputStream().buffered().use { input ->
         val digest = MessageDigest.getInstance("SHA-256")

@@ -54,7 +54,7 @@ class DeviceOperationsTest {
         assertEquals("heartbeat", payload.action)
         assertEquals("2.0.0", payload.appVersion)
         assertEquals(
-            setOf("uptime_ms","available_memory_bytes","memory_low","free_storage_bytes","total_storage_bytes","connection","playback_state","cache_state","sync_state","health_state","last_sync_epoch_ms","active_playlist_id","active_playlist_version","active_manifest_etag","previous_playlist_id","current_item_id","current_content_kind","current_media_type"),
+            setOf("uptime_ms","available_memory_bytes","memory_low","free_storage_bytes","total_storage_bytes","connection","playback_state","cache_state","sync_state","health_state","last_sync_epoch_ms","active_playlist_id","active_playlist_version","active_manifest_etag","previous_playlist_id","current_item_id","current_content_kind","current_media_type","update_channel","current_version_code","update_state","available_version_code","prepared_version_code","last_update_check_epoch_ms","last_update_error","installation_capability"),
             payload.runtime.keys,
         )
         assertEquals("ONLINE", payload.runtime["connection"])

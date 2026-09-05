@@ -12,12 +12,28 @@ android {
         applicationId = "com.loopin.player2"
         minSdk = 21
         targetSdk = 36
-        versionCode = 1
-        versionName = "2.0.0-phase12-diagnostics"
+        versionCode = providers.environmentVariable("LOOPIN_VERSION_CODE").orNull?.toInt() ?: 13
+        versionName = providers.environmentVariable("LOOPIN_VERSION_NAME").orNull ?: "2.0.0-phase13-ota"
         buildConfigField("String", "PAIRING_ENDPOINT", "\"https://zdhsfirabkmivuzwyids.supabase.co/functions/v1/device-pairing\"")
         buildConfigField("String", "MANIFEST_ENDPOINT", "\"https://zdhsfirabkmivuzwyids.supabase.co/functions/v1/player-manifest\"")
         buildConfigField("String", "MEDIA_ENDPOINT", "\"https://zdhsfirabkmivuzwyids.supabase.co/functions/v1/player-media\"")
         buildConfigField("String", "COMMAND_ENDPOINT", "\"https://zdhsfirabkmivuzwyids.supabase.co/functions/v1/player-commands\"")
+        buildConfigField("String", "UPDATE_ENDPOINT", "\"https://zdhsfirabkmivuzwyids.supabase.co/functions/v1/player-update\"")
+    }
+
+    val releaseKeystore = providers.environmentVariable("LOOPIN_RELEASE_KEYSTORE")
+    val releaseAlias = providers.environmentVariable("LOOPIN_RELEASE_KEY_ALIAS")
+    val releaseStorePassword = providers.environmentVariable("LOOPIN_RELEASE_STORE_PASSWORD")
+    val releaseKeyPassword = providers.environmentVariable("LOOPIN_RELEASE_KEY_PASSWORD")
+    signingConfigs {
+        if (releaseKeystore.isPresent && releaseAlias.isPresent && releaseStorePassword.isPresent && releaseKeyPassword.isPresent) {
+            create("loopinRelease") {
+                storeFile = file(releaseKeystore.get())
+                keyAlias = releaseAlias.get()
+                storePassword = releaseStorePassword.get()
+                keyPassword = releaseKeyPassword.get()
+            }
+        }
     }
 
     buildTypes {
@@ -28,6 +44,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+            signingConfig = signingConfigs.findByName("loopinRelease")
         }
     }
 
