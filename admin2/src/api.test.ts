@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { assignPlaylistVersion, createPlaylist, createScreen, enqueuePlayerCommand, listHealthEvents, listMediaAssets, listPlaylists, listPublishedPlaylistVersions, listRecentCommands, listScreens, login, pairPlayer, publishPlaylistDraft, savePlaylistDraft, uploadMediaAsset } from "./api";
+import { activateUpdateRollout, assignPlaylistVersion, controlUpdateRollout, createPlaylist, createScreen, createUpdateRollout, enqueuePlayerCommand, listHealthEvents, listMediaAssets, listPlaylists, listPublishedPlaylistVersions, listRecentCommands, listScreenGroups, listScreens, listUpdateRollouts, login, pairPlayer, publishPlaylistDraft, savePlaylistDraft, saveScreenGroup, uploadMediaAsset } from "./api";
 
 describe("Admin API", () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -141,4 +141,10 @@ describe("Admin API", () => {
   it("loads at most 50 recent tenant-scoped health events",async()=>{const limit=vi.fn().mockResolvedValue({data:[{id:"e1"}],error:null});const order=vi.fn(()=>({limit}));const client={from:vi.fn(()=>({select:vi.fn(()=>({order}))}))} as unknown as SupabaseClient;await expect(listHealthEvents(client)).resolves.toHaveLength(1);expect(client.from).toHaveBeenCalledWith("device_health_events");expect(limit).toHaveBeenCalledWith(50);});
 
   it("reports command enqueue and history failures safely",async()=>{const rpcClient={rpc:vi.fn().mockResolvedValue({data:null,error:{}})} as unknown as SupabaseClient;await expect(enqueuePlayerCommand(rpcClient,"screen","GET_STATUS")).rejects.toThrow("Não foi possível enviar");const order=vi.fn(()=>({limit:vi.fn().mockResolvedValue({data:null,error:{}})}));const listClient={from:vi.fn(()=>({select:vi.fn(()=>({order}))}))} as unknown as SupabaseClient;await expect(listRecentCommands(listClient)).rejects.toThrow("Não foi possível carregar");});
+
+  it("loads groups with memberships and saves them atomically",async()=>{const order=vi.fn().mockResolvedValue({data:[{id:"g1",members:[{screen_id:"s1"}]}],error:null});const rpc=vi.fn().mockResolvedValue({data:{id:"g1"},error:null});const client={from:vi.fn(()=>({select:vi.fn(()=>({order}))})),rpc} as unknown as SupabaseClient;await expect(listScreenGroups(client)).resolves.toHaveLength(1);await saveScreenGroup(client,null,"Piloto","Grupo",["s1"]);expect(rpc).toHaveBeenCalledWith("set_screen_group",{p_group_id:null,p_name:"Piloto",p_description:"Grupo",p_screen_ids:["s1"]});});
+
+  it("loads rollout snapshots and creates a rollout through the secure RPC",async()=>{const order=vi.fn().mockResolvedValue({data:[{id:"r1",devices:[{device_id:"d1"}]}],error:null});const rpc=vi.fn().mockResolvedValue({data:{id:"r1"},error:null});const client={from:vi.fn(()=>({select:vi.fn(()=>({order}))})),rpc} as unknown as SupabaseClient;await expect(listUpdateRollouts(client)).resolves.toHaveLength(1);await createUpdateRollout(client,{releaseId:"rel",name:"Piloto",groupIds:["g1"],screenIds:[],waves:[5,25,100],scheduledStartAt:null,timezone:null,windowStart:null,windowEnd:null});expect(rpc).toHaveBeenCalledWith("create_update_rollout",expect.objectContaining({p_release_id:"rel",p_group_ids:["g1"],p_waves:[5,25,100]}));});
+
+  it("uses explicit RPCs for rollout transitions",async()=>{const rpc=vi.fn().mockResolvedValue({data:{id:"r1"},error:null});const client={rpc} as unknown as SupabaseClient;await activateUpdateRollout(client,"r1");await controlUpdateRollout(client,"r1","ADVANCE");expect(rpc).toHaveBeenNthCalledWith(1,"activate_update_rollout",{p_rollout_id:"r1"});expect(rpc).toHaveBeenNthCalledWith(2,"control_update_rollout",{p_rollout_id:"r1",p_action:"ADVANCE"});});
 });
